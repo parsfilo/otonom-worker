@@ -111,4 +111,17 @@ describe("Trusted Source Bootstrap", () => {
     }).trim()
     expect(helper).toBe("")
   })
+
+  it("Test 5: resolves target base branch SHA when given ref/branch name (e.g. 'main')", async () => {
+    const bootstrapper = new SourceBootstrapper({
+      repoUrl: bareOriginDir,
+      targetSha: "main",
+      baseBranch: "main",
+      destinationDir: targetCheckoutDir
+    })
+
+    const result = await bootstrapper.bootstrap()
+    expect(result.success).toBe(true)
+    expect(result.checkedOutSha).toBe(validCommitSha)
+  })
 })

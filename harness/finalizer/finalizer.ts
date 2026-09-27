@@ -7,6 +7,7 @@ import { containsSensitiveData } from "../logging/sanitizer.js"
 import { GitChangeDetector } from "./git-detector.js"
 
 import { VerificationRunner, VerificationResult } from "../verification/runner.js"
+import type { TrustedDopplerClient } from "../doppler/client.js"
 
 export interface FinalizerConfig {
   taskPath: string
@@ -19,6 +20,11 @@ export interface FinalizerConfig {
   customVerificationProfiles?: Record<string, string>
   verificationTimeoutMs?: number
   reportOutputPath?: string
+  createPr?: boolean
+  fetchFn?: typeof fetch
+  committerName?: string
+  committerEmail?: string
+  dopplerClient?: TrustedDopplerClient
 }
 
 export interface FinalizerReport {
@@ -165,7 +171,7 @@ export class Finalizer {
       }
     }
 
-    // 4. Secret Scan check on authoritative paths
+    // 4. Secret Scan check on authoritative paths and file contents
     for (const p of allPathsToVerifyOwnership) {
       if (containsSensitiveData(p)) {
         return {
@@ -174,6 +180,22 @@ export class Finalizer {
           pushed: false,
           branchName,
           error: `Secret scan violation: sensitive token detected in path ${p}`
+        }
+      }
+      const fullPath = path.join(this.workspaceRoot, p)
+      if (fs.existsSync(fullPath)) {
+        const stat = fs.lstatSync(fullPath)
+        if (stat.isFile() && stat.size < 5 * 1024 * 1024) {
+          const content = fs.readFileSync(fullPath, "utf-8")
+          if (containsSensitiveData(content)) {
+            return {
+              success: false,
+              dryRun: this.dryRun,
+              pushed: false,
+              branchName,
+              error: `Secret scan violation: sensitive token detected in file content of ${p}`
+            }
+          }
         }
       }
     }
@@ -231,6 +253,17 @@ export class Finalizer {
     }
 
     // 7. In Real Mode: Write token is introduced strictly here
+    if (!this.targetToken && this.config.dopplerClient) {
+      const finalizerConfig = this.config.dopplerClient.getFinalizerConfig()
+      this.targetToken = finalizerConfig.targetWriteToken
+      if (!this.config.committerName) {
+        this.config.committerName = finalizerConfig.committerName
+      }
+      if (!this.config.committerEmail) {
+        this.config.committerEmail = finalizerConfig.committerEmail
+      }
+    }
+
     if (!this.targetToken) {
       const tokenReport: FinalizerReport = {
         success: false,
@@ -282,13 +315,16 @@ export class Finalizer {
       encoding: "utf-8"
     }).trim()
 
+    const committerName = this.config.committerName || "OTONOM Swarm Worker"
+    const committerEmail = this.config.committerEmail || "worker@otonom.internal"
+
     if (diffCached.length > 0) {
       execFileSync(
         "git",
         [
           "-c", "core.hooksPath=/dev/null",
-          "-c", "user.name=OTONOM Swarm Worker",
-          "-c", "user.email=worker@otonom.internal",
+          "-c", `user.name=${committerName}`,
+          "-c", `user.email=${committerEmail}`,
           "commit",
           "-m", `swarm(${this.task.id}): automated lane completion`
         ],
@@ -310,16 +346,20 @@ export class Finalizer {
 
     // Push to target remote without --force, bypassing hooks and without leaking tokens to git config
     const targetRemote = this.config.targetRemote || "origin"
+    const pushArgs = [
+      "-c", "core.hooksPath=/dev/null",
+      "-c", "credential.helper="
+    ]
+    if (this.targetToken) {
+      const authHeader = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${this.targetToken}`).toString("base64")}`
+      pushArgs.push("-c", `http.https://github.com/.extraheader=${authHeader}`)
+    }
+    pushArgs.push("push", targetRemote, `HEAD:refs/heads/${branchName}`)
+
     try {
       execFileSync(
         "git",
-        [
-          "-c", "core.hooksPath=/dev/null",
-          "-c", "credential.helper=",
-          "push",
-          targetRemote,
-          `HEAD:refs/heads/${branchName}`
-        ],
+        pushArgs,
         {
           cwd: this.workspaceRoot,
           env: {
@@ -345,17 +385,93 @@ export class Finalizer {
       return pushFailedReport
     }
 
+    let prUrl: string | undefined
+    if (this.config.createPr) {
+      try {
+        prUrl = await this.createOrFindDraftPr(branchName, commitSha)
+      } catch (prErr: any) {
+        const prFailedReport: FinalizerReport = {
+          success: false,
+          dryRun: false,
+          pushed: true,
+          branchName,
+          commitSha,
+          error: `PR creation failed: ${prErr.message}`,
+          trustedVerification,
+          authoritativeChangedPaths: changeSummary.actualChangedPaths
+        }
+        this.writeReport(prFailedReport)
+        return prFailedReport
+      }
+    }
+
     const realReport: FinalizerReport = {
       success: true,
       dryRun: false,
       pushed: true,
       branchName,
       commitSha,
+      prUrl,
       trustedVerification,
       authoritativeChangedPaths: changeSummary.actualChangedPaths
     }
     this.writeReport(realReport)
     return realReport
+  }
+
+  private async createOrFindDraftPr(branchName: string, commitSha: string): Promise<string> {
+    const fetchImpl = this.config.fetchFn || fetch
+    const repoFullName = this.task.source_repository || "oaslananka/otonom"
+    const [owner, repo] = repoFullName.split("/")
+    const targetBranch = this.task.base_branch || "main"
+
+    const headers: Record<string, string> = {
+      "Accept": "application/vnd.github+json",
+      "User-Agent": "otonom-worker-finalizer",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+    if (this.targetToken) {
+      headers["Authorization"] = `Bearer ${this.targetToken}`
+    }
+
+    // 1. Idempotency: Check if PR already exists for head branch
+    const queryUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?head=${owner}:${branchName}&state=all`
+    const listRes = await fetchImpl(queryUrl, { headers })
+    if (listRes.ok) {
+      const list = await listRes.json()
+      if (Array.isArray(list) && list.length > 0) {
+        const existing = list[0]
+        console.log(`[Finalizer] Existing PR found: ${existing.html_url} (#${existing.number})`)
+        return existing.html_url
+      }
+    }
+
+    // 2. Create new Draft PR
+    const createUrl = `https://api.github.com/repos/${owner}/${repo}/pulls`
+    const prBody = Finalizer.formatPrBody(this.task, this.result)
+    const createRes = await fetchImpl(createUrl, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        title: `[SWARM SMOKE] Validate private OpenCode agent pipeline`,
+        head: branchName,
+        base: targetBranch,
+        body: prBody,
+        draft: true
+      })
+    })
+
+    if (!createRes.ok) {
+      const errText = await createRes.text()
+      throw new Error(`GitHub API error (${createRes.status}): ${errText}`)
+    }
+
+    const created = await createRes.json()
+    console.log(`[Finalizer] Draft PR created successfully: ${created.html_url} (#${created.number})`)
+    return created.html_url
   }
 
   public validatePushBranch(branchName: string): void {

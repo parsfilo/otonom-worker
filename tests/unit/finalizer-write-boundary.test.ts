@@ -266,4 +266,39 @@ describe("Hard Trust Boundary & Git Push in Finalizer", () => {
     const remoteBranches = execFileSync("git", ["branch", "-a"], { cwd: bareRepoDir, encoding: "utf-8" })
     expect(remoteBranches).not.toContain("swarm/run-dry/lane-write-test")
   })
+
+  it("Test 7: write token is not fetched from Doppler if verification fails", async () => {
+    fs.appendFileSync(path.join(workRepoDir, "src", "index.ts"), "// edit\n")
+    const { taskPath, resultPath } = setupTaskAndResult("src/index.ts")
+
+    let dopplerCalled = false
+    const mockDopplerClient = {
+      getFinalizerConfig: () => {
+        dopplerCalled = true
+        return {
+          targetWriteToken: "ghp_mock",
+          baseBranch: "main",
+          committerName: "Bot",
+          committerEmail: "bot@test.com"
+        }
+      }
+    }
+
+    const finalizer = new Finalizer({
+      taskPath,
+      resultPath,
+      workspaceRoot: workRepoDir,
+      dryRun: false,
+      workflowRunId: "run-token-test",
+      dopplerClient: mockDopplerClient as any,
+      customVerificationProfiles: {
+        lane: "node -e 'process.exit(1)'" // failing verification
+      }
+    })
+
+    const report = await finalizer.execute()
+    expect(report.success).toBe(false)
+    // Doppler getFinalizerConfig must NEVER have been called because verification failed!
+    expect(dopplerCalled).toBe(false)
+  })
 })

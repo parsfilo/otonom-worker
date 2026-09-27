@@ -62,6 +62,16 @@ jobs:
           pnpm tsx scripts/validate-skills.ts
           pnpm typecheck
 
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
+
+      - name: Doppler Preflight
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          SWARM_FORCE_SINGLE: ${{ github.event.inputs.manifest_path == 'config/lanes.phase2-smoke.yaml' && 'true' || 'false' }}
+        run: |
+          pnpm tsx harness/doppler/preflight.ts
+
       - name: Generate Matrix
         id: generate
         env:
@@ -124,6 +134,14 @@ jobs:
           npm install -g opencode-ai@1.18.32
           # Pinned Language Servers & CLI Tools
           npm install -g typescript-language-server@4.3.3 yaml-language-server@1.15.0 bash-language-server@5.4.3 vscode-langservers-extracted@4.10.0 @ast-grep/cli@0.45.3
+          # uv / uvx for Serena runtime supervisor
+          python3 -m venv /opt/uv-tools
+          /opt/uv-tools/bin/pip install --upgrade pip
+          /opt/uv-tools/bin/pip install uv
+          echo "/opt/uv-tools/bin" >> "$GITHUB_PATH"
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
 
       - name: Initialize Storage Layout
         run: |
@@ -143,11 +161,21 @@ jobs:
         run: |
           pnpm tsx harness/runtime/prepare-lane.ts "$MANIFEST_PATH" "$LANE_ID" "$CONTROL_DIR" "$TARGET_DIR"
 
+      - name: Bootstrap Target Workspace
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          pnpm tsx harness/runtime/bootstrap-cli.ts "$CONTROL_DIR/task.json" "$TARGET_DIR"
+
       - name: Run OpenCode Agent Headless
         run: |
           pnpm tsx harness/runtime/run-lane.ts "$CONTROL_DIR/task.json" "$CONTROL_DIR" "$PRIVATE_DIR" "$TARGET_DIR"
 
       - name: Execute Trusted Finalizer
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           pnpm tsx harness/finalizer/cli.ts "$CONTROL_DIR/task.json" "$CONTROL_DIR/result.json" "$TARGET_DIR" "$CONTROL_DIR/finalizer-report.json"
 
@@ -155,6 +183,11 @@ jobs:
         if: always()
         run: |
           pnpm tsx harness/runtime/emit-summary.ts "$CONTROL_DIR/finalizer-report.json" "$LANE_ID"
+
+      - name: Verify Live Confidentiality Boundaries
+        if: always()
+        run: |
+          pnpm tsx harness/policies/confidentiality-check.ts "$CONTROL_DIR" "$PRIVATE_DIR" "$TARGET_DIR"
 
   swarm-summary:
     name: Swarm Execution Summary

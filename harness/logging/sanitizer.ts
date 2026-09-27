@@ -10,7 +10,7 @@
 
 const ANSI_REGEX = /\u001b\[[0-9;]*[a-zA-Z]/g
 const PRIVATE_KEY_REGEX = /-----BEGIN (?:[A-Z0-9_-]+\s+)*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9_-]+\s+)*PRIVATE KEY-----/g
-const GITHUB_TOKEN_REGEX = /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,255}\b/g
+const GITHUB_TOKEN_REGEX = /\b(?:github_pat_[A-Za-z0-9_]{20,255}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,255})\b/g
 const DOPPLER_TOKEN_REGEX = /\bdp\.(st|pt|sa|sc)\.[A-Za-z0-9_]{15,255}\b/g
 const BEARER_JWT_REGEX = /\bBearer\s+eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gi
 const STANDALONE_JWT_REGEX = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g
@@ -55,7 +55,7 @@ export function containsSensitiveData(text: string): boolean {
   if (!text) return false
 
   const hasKey = /-----BEGIN (?:[A-Z0-9_-]+\s+)*PRIVATE KEY-----/.test(text)
-  const hasGhToken = /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,255}\b/.test(text)
+  const hasGhToken = /\b(?:github_pat_[A-Za-z0-9_]{20,255}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,255})\b/.test(text)
   const hasDoppler = /\bdp\.(st|pt|sa|sc)\.[A-Za-z0-9_]{15,255}\b/.test(text)
   const hasBearer = /\bBearer\s+eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/i.test(text)
   const hasJwt = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(text)

@@ -115,6 +115,10 @@
     "jq": {
       "binary": "jq",
       "version": "1.7.1"
+    },
+    "doppler": {
+      "action": "dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73",
+      "version": "v4.0.1"
     }
   }
 }

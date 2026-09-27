@@ -77,7 +77,7 @@
     },
     "verification_profile": {
       "type": "string",
-      "enum": ["targeted", "lane", "full", "review-only"]
+      "enum": ["targeted", "lane", "full", "review-only", "smoke-doc"]
     },
     "required_skills": {
       "type": "array",

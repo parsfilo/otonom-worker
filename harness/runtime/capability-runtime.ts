@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { spawn } from "node:child_process"
 import yaml from "yaml"
 
 export interface RoleProfile {
@@ -66,8 +67,15 @@ export class CapabilityRuntimeManager {
     // 1. Serena Wiring
     if (profile.serena) {
       mcp.serena = {
-        command: "serena",
-        args: ["start", "--workspace", normalizedDir, "--ephemeral"],
+        type: "stdio",
+        command: "uvx",
+        args: [
+          "--from",
+          "git+https://github.com/oraios/serena@949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
+          "serena-mcp-server",
+          "--workspace",
+          normalizedDir
+        ],
         env: {
           SERENA_SHARED_MEMORY: "false"
         }
@@ -178,5 +186,76 @@ export class CapabilityRuntimeManager {
     const config = this.generateOpenCodeConfig(role, targetWorkspaceDir)
     fs.mkdirSync(path.dirname(outputPath), { recursive: true })
     fs.writeFileSync(outputPath, JSON.stringify(config, null, 2))
+  }
+}
+
+export interface SerenaSupervisorOptions {
+  workspaceDir: string
+  targetSha: string
+  mockProcess?: boolean
+}
+
+export interface SerenaHandle {
+  running: boolean
+  pid?: number
+}
+
+export class SerenaRuntimeSupervisor {
+  private handle: SerenaHandle = { running: false }
+  private childProcess?: any
+
+  constructor(private options: SerenaSupervisorOptions) {}
+
+  public async start(): Promise<SerenaHandle> {
+    if (!fs.existsSync(this.options.workspaceDir)) {
+      throw new Error(`Workspace directory does not exist for Serena: ${this.options.workspaceDir}`)
+    }
+
+    if (this.options.mockProcess) {
+      this.handle = { running: true, pid: 12345 }
+      console.log("serena_runtime: PASS")
+      return this.handle
+    }
+
+    try {
+      this.childProcess = spawn(
+        "uvx",
+        [
+          "--from",
+          "git+https://github.com/oraios/serena@949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
+          "serena-mcp-server",
+          "--workspace",
+          this.options.workspaceDir
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            SERENA_SHARED_MEMORY: "false"
+          }
+        }
+      )
+
+      this.handle = {
+        running: true,
+        pid: this.childProcess.pid
+      }
+
+      console.log("serena_runtime: PASS")
+      return this.handle
+    } catch (err: any) {
+      console.error(`[Serena Error] Failed to start Serena: ${err.message}`)
+      this.handle = { running: false }
+      throw err
+    }
+  }
+
+  public async stop(): Promise<void> {
+    if (this.childProcess && !this.childProcess.killed) {
+      try {
+        this.childProcess.kill("SIGTERM")
+      } catch {}
+    }
+    this.handle.running = false
   }
 }

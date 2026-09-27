@@ -22,7 +22,8 @@ const DEFAULT_PROFILES: Record<string, string> = {
   targeted: "pnpm test:targeted",
   lane: "pnpm test",
   full: "pnpm test && pnpm typecheck && pnpm lint",
-  "review-only": "pnpm lint"
+  "review-only": "pnpm lint",
+  "smoke-doc": "node -e \"const fs = require('fs'); const p = 'docs/swarm-smoke/phase2-harness-validation.md'; if (!fs.existsSync(p)) process.exit(1); const s = fs.statSync(p); if (!s.isFile() || s.size > 10240) process.exit(1); process.exit(0)\" && git diff --check"
 }
 
 export class VerificationRunner {

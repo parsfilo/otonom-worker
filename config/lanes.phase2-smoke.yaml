@@ -1,0 +1,22 @@
+tasks:
+  - id: "phase2-private-pr-smoke"
+    title: "Validate private OpenCode agent pipeline"
+    role: "builder-core"
+    source_repository: "oaslananka/otonom"
+    base_sha: "0000000000000000000000000000000000000000"
+    objectives:
+      - "Create docs/swarm-smoke/phase2-harness-validation.md with deterministic swarm harness validation documentation"
+    allowed_write_paths:
+      - "docs/swarm-smoke/phase2-harness-validation.md"
+    forbidden_write_paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/**"
+      - "src/**"
+    acceptance_criteria:
+      - "File docs/swarm-smoke/phase2-harness-validation.md exists and contains validation documentation"
+      - "No source code or repository configuration files are modified"
+      - "Verification profile smoke-doc exits with code 0"
+    verification_profile: "smoke-doc"
+    timeout_minutes: 15
+    risk_classification: "LOW"

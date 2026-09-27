@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { assertAgentSecretBoundary, FORBIDDEN_ENV_VARS } from "../policies/secret-boundary.js"
 
 export type AgentExecutionStatus =
   | "PASS"
@@ -70,10 +71,22 @@ export class AgentRunner {
       `[OTONOM-HARNESS] Starting agent execution for lane '${this.laneId}' (storage: private runner-local)`
     )
 
+    const effectiveEnv: Record<string, string | undefined> = {
+      ...(this.env ? { ...process.env, ...this.env } : process.env)
+    }
+
+    // Explicitly scrub forbidden tokens so they are never inherited by the agent
+    for (const forbidden of FORBIDDEN_ENV_VARS) {
+      delete effectiveEnv[forbidden]
+    }
+
+    // Live boundary check: asserts env and git config contain zero forbidden credentials
+    assertAgentSecretBoundary(effectiveEnv, this.cwd)
+
     return new Promise<AgentRunResult>((resolve) => {
       const child: ChildProcess = spawn(this.command, this.args, {
         cwd: this.cwd,
-        env: this.env ? { ...process.env, ...this.env } : process.env,
+        env: effectiveEnv as NodeJS.ProcessEnv,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true
       })
