@@ -96,7 +96,19 @@ export class ModelExecutor {
         }
       }
 
-      // 2. Deterministic code / verification failure: do NOT retry across models forever
+      // 2. Transient or infrastructure failure: continue loop to next fallback model
+      const isTransientOrInfrastructure =
+        runResult.status === "RATE_LIMITED" ||
+        runResult.status === "STALLED" ||
+        runResult.status === "UNAVAILABLE" ||
+        runResult.errorCategory === "SPAWN_ERROR" ||
+        runResult.errorCategory === "MODEL_UNAVAILABLE"
+
+      if (isTransientOrInfrastructure && i + 1 < this.maxAttempts) {
+        continue
+      }
+
+      // 3. Deterministic code / verification failure: do NOT retry across models forever
       if (runResult.status === "FAIL") {
         return {
           success: false,
@@ -107,8 +119,6 @@ export class ModelExecutor {
           error: "Deterministic execution failure"
         }
       }
-
-      // 3. Transient failure (RATE_LIMITED, STALLED, UNAVAILABLE): continue loop to next model
     }
 
     return {

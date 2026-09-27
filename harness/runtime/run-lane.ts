@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { ModelExecutor } from "./model-executor.js"
+import { ModelSelector } from "./model-selector.js"
 import { CapabilityRuntimeManager, SerenaRuntimeSupervisor } from "./capability-runtime.js"
 import { GitChangeDetector } from "../finalizer/git-detector.js"
 
@@ -61,7 +62,9 @@ export async function runLane(
 
   let execResult: any
   try {
+    const selector = new ModelSelector({ autoDiscover: true })
     const executor = new ModelExecutor({
+      selector,
       privateDir,
       workspaceDir: targetWorkspaceDir,
       maxAttempts: 3

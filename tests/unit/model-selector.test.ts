@@ -39,4 +39,22 @@ describe("Model Selector", () => {
     expect(history[1].status).toBe("PASS")
     expect(selector.getActiveModelForLane("lane-1")).toBe("model-b")
   })
+
+  it("discovers free models using OpenCode CLI or default free catalog", () => {
+    const freeModels = ModelSelector.discoverFreeModels()
+    expect(Array.isArray(freeModels)).toBe(true)
+    expect(freeModels.length).toBeGreaterThan(0)
+    for (const model of freeModels) {
+      expect(model).toMatch(/opencode\//)
+      expect(model).toMatch(/free/)
+    }
+  })
+
+  it("populates free models when autoDiscover is enabled", () => {
+    const selector = new ModelSelector({ autoDiscover: true })
+    const model = selector.selectModelForRole("builder-core")
+    expect(model).toBeDefined()
+    expect(model).toMatch(/opencode\//)
+    expect(model).toMatch(/free/)
+  })
 })

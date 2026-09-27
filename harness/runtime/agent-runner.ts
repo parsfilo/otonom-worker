@@ -210,7 +210,7 @@ export class AgentRunner {
     }
 
     const unavailableRegex =
-      /(?:model.*not found|model.*unavailable|does not exist|model.*not supported)/i
+      /(?:model.*not found|model.*unavailable|does not exist|model.*not supported|unknown.*model|unknownerror|unexpected.*server.*error|provider.*not.*found|failed to fetch|econnrefused)/i
     if (unavailableRegex.test(logHeadAndTail)) {
       return { status: "UNAVAILABLE", errorCategory: "MODEL_UNAVAILABLE" }
     }
