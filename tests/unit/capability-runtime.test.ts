@@ -136,12 +136,6 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     const manifestRelPath = `.tmp-capability-${Date.now()}-${Math.random().toString(16).slice(2)}.yaml`
     const manifestPath = path.join(process.cwd(), manifestRelPath)
     fs.mkdirSync(repoDir, { recursive: true })
-    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
-    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
-    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
-    fs.writeFileSync(path.join(repoDir, "README.md"), "fixture\n")
-    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "ignore" })
     fs.writeFileSync(
       manifestPath,
       [
@@ -184,11 +178,8 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     expect(serenaConfig.gui_log_window).toBe(false)
     expect(serenaConfig.web_dashboard).toBe(false)
     expect(serenaConfig.web_dashboard_open_on_launch).toBe(false)
-    const status = execFileSync("git", ["status", "--porcelain=v1", "-uall"], {
-      cwd: repoDir,
-      encoding: "utf-8"
-    })
-    expect(status).toBe("")
+    expect(fs.existsSync(path.join(repoDir, ".git"))).toBe(false)
+    expect(fs.readdirSync(repoDir)).toEqual([])
   }, 90000)
 
   it("Test 10: config preflight detects invalid legacy MCP shape", () => {

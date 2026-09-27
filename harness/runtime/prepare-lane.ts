@@ -20,7 +20,6 @@ export function prepareLane(
   }
 
   const capabilityManager = new CapabilityRuntimeManager()
-  const baseline = capabilityManager.captureWorkspaceStatus(targetWorkspace)
 
   // 1. Write task.json strictly in controlDir (outside target repo)
   fs.mkdirSync(controlDir, { recursive: true })
@@ -42,7 +41,6 @@ export function prepareLane(
     opencodeConfigPath,
     { serenaHomeDir: serenaRuntime?.homeDir }
   )
-  capabilityManager.assertCapabilityWorkspaceClean(targetWorkspace, baseline)
   console.log(`[Prepare Lane] Configured role capabilities (${(currentTask as any).role}) at: ${opencodeConfigPath}`)
   console.log(`[Prepare Lane] Copied harness plugin to: ${pluginPath}`)
 }

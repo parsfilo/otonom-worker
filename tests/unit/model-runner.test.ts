@@ -263,4 +263,38 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     })
     expect(calls).toBe(0)
   })
+
+  it("Test 8: clean bootstrapped workspace reaches model execution", async () => {
+    const repoDir = path.join(tempDir, "clean-target")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "fixture\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "ignore" })
+
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      runnerFactory: () => ({
+        run: async () => ({
+          exitCode: 0,
+          status: "PASS",
+          durationMs: 1,
+          timedOut: false,
+          stalled: false,
+          stdoutPath: "",
+          stderrPath: "",
+          sanitizedSummary: "PASS"
+        })
+      }),
+      maxAttempts: 1
+    })
+
+    await expect(executor.executeLane("lane-clean", "builder-core")).resolves.toMatchObject({
+      success: true,
+      status: "PASS"
+    })
+  })
 })
