@@ -297,4 +297,86 @@ describe("Model Selector & Execution Driver with Fallback", () => {
       status: "PASS"
     })
   })
+
+  it("Test 9: requires_changes rejects process exit 0 with no work product and falls back", async () => {
+    const repoDir = path.join(tempDir, "requires-changes")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: repoDir, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf-8" }).trim()
+    let calls = 0
+
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      baseSha,
+      requiresChanges: true,
+      runnerFactory: () => ({
+        run: async () => {
+          calls++
+          if (calls === 2) fs.writeFileSync(path.join(repoDir, "work.txt"), "done\n")
+          return {
+            exitCode: 0,
+            status: "PASS" as const,
+            durationMs: 1,
+            timedOut: false,
+            stalled: false,
+            stdoutPath: "",
+            stderrPath: "",
+            sanitizedSummary: "process exited"
+          }
+        }
+      }),
+      maxAttempts: 2
+    })
+
+    const result = await executor.executeLane("lane-requires-work", "builder-core")
+    expect(result.success).toBe(true)
+    expect(calls).toBe(2)
+    expect(result.attempts[0].errorCategory).toBe("NO_WORK_PRODUCT")
+    expect(result.attempts[1].status).toBe("PASS")
+  })
+
+  it("Test 10: requires_changes fails truthfully when every model exits without changing the repository", async () => {
+    const repoDir = path.join(tempDir, "no-work")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: repoDir, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf-8" }).trim()
+
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      baseSha,
+      requiresChanges: true,
+      runnerFactory: () => ({
+        run: async () => ({
+          exitCode: 0,
+          status: "PASS" as const,
+          durationMs: 1,
+          timedOut: false,
+          stalled: false,
+          stdoutPath: "",
+          stderrPath: "",
+          sanitizedSummary: "process exited"
+        })
+      }),
+      maxAttempts: 2
+    })
+
+    const result = await executor.executeLane("lane-no-work", "builder-core")
+    expect(result.success).toBe(false)
+    expect(result.status).toBe("FAIL")
+    expect(result.error).toBe("NO_WORK_PRODUCT")
+    expect(result.attempts).toHaveLength(2)
+  })
+
 })

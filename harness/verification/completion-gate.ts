@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import { VerificationResult } from "./runner.js"
 import { PolicyViolation } from "../policies/ownership.js"
 
@@ -15,7 +16,13 @@ export interface CompletionGateResult {
 }
 
 export function evaluateLaneCompletion(input: CompletionGateInput): CompletionGateResult {
-  // 1. Must have executed a verification command
+  let task: any = null
+  try {
+    task = JSON.parse(fs.readFileSync(input.taskPath, "utf-8"))
+  } catch {
+    return { canComplete: false, reason: "Task contract is missing or invalid." }
+  }
+
   if (!input.latestVerification) {
     return {
       canComplete: false,
@@ -23,7 +30,6 @@ export function evaluateLaneCompletion(input: CompletionGateInput): CompletionGa
     }
   }
 
-  // 2. Latest verification must have passed (exit code 0)
   if (!input.latestVerification.passed || input.latestVerification.exit_code !== 0) {
     return {
       canComplete: false,
@@ -31,7 +37,6 @@ export function evaluateLaneCompletion(input: CompletionGateInput): CompletionGa
     }
   }
 
-  // 3. Must not have any active ownership violations
   if (input.ownershipViolations && input.ownershipViolations.length > 0) {
     return {
       canComplete: false,
@@ -39,11 +44,17 @@ export function evaluateLaneCompletion(input: CompletionGateInput): CompletionGa
     }
   }
 
-  // 4. Must not have unresolved blockers
   if (input.unresolvedBlockers && input.unresolvedBlockers.length > 0) {
     return {
       canComplete: false,
       reason: `Unresolved blockers present: ${input.unresolvedBlockers.join(", ")}`
+    }
+  }
+
+  if (task.requires_changes === true && input.changedPaths.length === 0) {
+    return {
+      canComplete: false,
+      reason: "NO_WORK_PRODUCT: task requires repository changes but no changed paths were detected."
     }
   }
 

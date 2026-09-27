@@ -16,6 +16,7 @@ export interface TaskRecord {
   verification_profile: string
   timeout_minutes?: number
   risk_classification: string
+  requires_changes?: boolean
 }
 
 export interface MatrixItem {
@@ -25,6 +26,7 @@ export interface MatrixItem {
   verification_profile: string
   timeout_minutes: number
   risk_classification: string
+  requires_changes?: boolean
 }
 
 export interface MatrixOutput {

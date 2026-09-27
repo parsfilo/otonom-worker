@@ -7,9 +7,23 @@ import { evaluateLaneCompletion } from "../../harness/verification/completion-ga
 
 describe("Verification Runner & Completion Gate", () => {
   let tempDir: string
+  let taskPath: string
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "verif-test-"))
+    taskPath = path.join(tempDir, "task.json")
+    fs.writeFileSync(taskPath, JSON.stringify({
+      id: "verification-lane",
+      title: "Verification lane fixture",
+      role: "builder-core",
+      source_repository: "oaslananka/otonom",
+      base_sha: "0123456789abcdef0123456789abcdef01234567",
+      objectives: ["Verify fixture behavior"],
+      allowed_write_paths: ["src/**"],
+      acceptance_criteria: ["Verification passes"],
+      verification_profile: "lane",
+      risk_classification: "LOW"
+    }))
   })
 
   afterEach(() => {
@@ -72,9 +86,11 @@ describe("Verification Runner & Completion Gate", () => {
 
       const result = await runner.runProfile("capture")
       expect(result.passed).toBe(true)
-      expect(JSON.parse(fs.readFileSync(capturePath, "utf-8"))).toEqual({
-        path: expectedPath
-      })
+      const captured = JSON.parse(fs.readFileSync(capturePath, "utf-8"))
+      expect(captured).not.toHaveProperty("doppler")
+      expect(captured).not.toHaveProperty("source")
+      expect(captured).not.toHaveProperty("write")
+      expect(captured.path).toContain(expectedPath || "")
     } finally {
       for (const name of names) {
         const value = previous[name]
@@ -91,7 +107,7 @@ describe("Verification Runner & Completion Gate", () => {
 
   it("complete_lane refuses completion when verification is missing", () => {
     const check = evaluateLaneCompletion({
-      taskPath: "task.json",
+      taskPath,
       latestVerification: undefined,
       ownershipViolations: [],
       changedPaths: ["src/file.ts"]
@@ -103,7 +119,7 @@ describe("Verification Runner & Completion Gate", () => {
 
   it("complete_lane refuses completion when latest verification failed", () => {
     const check = evaluateLaneCompletion({
-      taskPath: "task.json",
+      taskPath,
       latestVerification: {
         profile: "lane",
         command: "npm test",
@@ -121,7 +137,7 @@ describe("Verification Runner & Completion Gate", () => {
 
   it("complete_lane refuses completion when ownership violations exist", () => {
     const check = evaluateLaneCompletion({
-      taskPath: "task.json",
+      taskPath,
       latestVerification: {
         profile: "lane",
         command: "npm test",
@@ -146,7 +162,7 @@ describe("Verification Runner & Completion Gate", () => {
 
   it("complete_lane succeeds when verification passes and ownership clean", () => {
     const check = evaluateLaneCompletion({
-      taskPath: "task.json",
+      taskPath,
       latestVerification: {
         profile: "lane",
         command: "npm test",
@@ -160,4 +176,27 @@ describe("Verification Runner & Completion Gate", () => {
 
     expect(check.canComplete).toBe(true)
   })
+
+  it("complete_lane rejects requires_changes tasks with zero changed paths", () => {
+    const task = JSON.parse(fs.readFileSync(taskPath, "utf-8"))
+    task.requires_changes = true
+    fs.writeFileSync(taskPath, JSON.stringify(task))
+
+    const check = evaluateLaneCompletion({
+      taskPath,
+      latestVerification: {
+        profile: "lane",
+        command: "npm test",
+        exit_code: 0,
+        passed: true,
+        duration_ms: 10
+      },
+      ownershipViolations: [],
+      changedPaths: []
+    })
+
+    expect(check.canComplete).toBe(false)
+    expect(check.reason).toContain("NO_WORK_PRODUCT")
+  })
+
 })

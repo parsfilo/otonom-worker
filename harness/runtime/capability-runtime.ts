@@ -260,6 +260,11 @@ export class CapabilityRuntimeManager {
       grep: "allow",
       lsp: profile.native_lsp ? "allow" : "deny",
       skill: "allow",
+      task_context: "allow",
+      run_verification: "allow",
+      complete_lane: "allow",
+      record_finding: "allow",
+      cross_lane_request: "allow",
       bash: {
         "*": "deny",
         "git status*": "allow",
@@ -353,7 +358,7 @@ export class CapabilityRuntimeManager {
       return { ok: false, category: "MODEL_UNAVAILABLE", message: "unsafe model candidate" }
     }
     try {
-      execFileSync(OPENCODE_COMMAND, opencodeArgs(["debug", "config", "--pure"]), {
+      execFileSync(OPENCODE_COMMAND, opencodeArgs(["debug", "config"]), {
         cwd: input.targetWorkspaceDir,
         env: {
           ...sanitizeEnv(process.env),

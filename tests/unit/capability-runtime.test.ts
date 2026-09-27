@@ -158,12 +158,13 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     }
 
     const configPath = path.join(controlDir, "opencode", "opencode.json")
-    const pluginPath = path.join(controlDir, "opencode", "plugins", "otonom-harness.ts")
     expect(fs.existsSync(configPath)).toBe(true)
-    expect(fs.existsSync(pluginPath)).toBe(true)
     expect(fs.existsSync(path.join(repoDir, ".opencode"))).toBe(false)
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"))
-    expect(config.plugin).toEqual(["./plugins/otonom-harness.ts"])
+    expect(config.plugin).toHaveLength(1)
+    expect(path.isAbsolute(config.plugin[0])).toBe(true)
+    expect(config.plugin[0]).toBe(path.resolve(process.cwd(), ".opencode/plugins/otonom-harness.ts"))
+    expect(fs.existsSync(config.plugin[0])).toBe(true)
     expect(config.mcp.context7).toBeUndefined()
     const serenaHomeDir = path.join(controlDir, "serena-home")
     const serenaConfigPath = path.join(serenaHomeDir, "serena_config.yml")

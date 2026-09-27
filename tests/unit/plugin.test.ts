@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
-import { createOtonomPlugin } from "../../.opencode/plugins/otonom-harness.js"
+import { OtonomPlugin, createOtonomPlugin } from "../../.opencode/plugins/otonom-harness.js"
 
 describe("OpenCode Otonom Harness Plugin", () => {
   let tempDir: string
@@ -121,4 +121,43 @@ describe("OpenCode Otonom Harness Plugin", () => {
     expect(output.context[0]).toContain("TASK_ID: webhook-durability")
     expect(output.context[0]).toContain("src/webhooks/**")
   })
+
+  it("default OpenCode plugin exposes the real custom tool registry and reads TASK_PATH from control storage", async () => {
+    const oldTaskPath = process.env.TASK_PATH
+    const oldResultPath = process.env.RESULT_PATH
+    const oldPrivateDir = process.env.PRIVATE_DIR
+    const oldLane = process.env.LANE_ID
+    const controlDir = path.join(tempDir, "control")
+    fs.mkdirSync(controlDir, { recursive: true })
+    const controlTaskPath = path.join(controlDir, "task.json")
+    fs.copyFileSync(taskPath, controlTaskPath)
+    process.env.TASK_PATH = controlTaskPath
+    process.env.RESULT_PATH = path.join(controlDir, "result.json")
+    process.env.PRIVATE_DIR = path.join(tempDir, "private")
+    process.env.LANE_ID = "webhook-durability"
+
+    try {
+      const hooks: any = await OtonomPlugin({ directory: tempDir } as any)
+      expect(Object.keys(hooks.tool).sort()).toEqual([
+        "complete_lane",
+        "cross_lane_request",
+        "record_finding",
+        "run_verification",
+        "task_context"
+      ])
+      const context = JSON.parse(await hooks.tool.task_context.execute({}, {} as any))
+      expect(context.id).toBe("webhook-durability")
+      expect(context.allowed_write_paths).toEqual(["src/webhooks/**"])
+    } finally {
+      if (oldTaskPath === undefined) delete process.env.TASK_PATH
+      else process.env.TASK_PATH = oldTaskPath
+      if (oldResultPath === undefined) delete process.env.RESULT_PATH
+      else process.env.RESULT_PATH = oldResultPath
+      if (oldPrivateDir === undefined) delete process.env.PRIVATE_DIR
+      else process.env.PRIVATE_DIR = oldPrivateDir
+      if (oldLane === undefined) delete process.env.LANE_ID
+      else process.env.LANE_ID = oldLane
+    }
+  })
+
 })

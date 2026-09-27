@@ -114,4 +114,34 @@ describe("OpenCode Custom Tools", () => {
     expect(attempt.completed).toBe(false)
     expect(attempt.error).toBeDefined()
   })
+
+  it("complete_lane writes result.json to trusted control storage and not the target workspace", async () => {
+    const targetDir = path.join(tempDir, "target")
+    const controlDir = path.join(tempDir, "control")
+    fs.mkdirSync(targetDir, { recursive: true })
+    fs.mkdirSync(controlDir, { recursive: true })
+    const resultPath = path.join(controlDir, "result.json")
+    const tool = new CompleteLaneTool({
+      taskPath,
+      resultPath,
+      privateDir,
+      workspaceRoot: targetDir,
+      latestVerification: {
+        profile: "lane",
+        command: "node -e process.exit(0)",
+        exit_code: 0,
+        passed: true,
+        duration_ms: 1
+      },
+      changedPaths: ["src/webhooks/receiver.ts"],
+      modelUsed: "opencode/test-free"
+    })
+
+    const result = await tool.execute()
+    expect(result.completed).toBe(true)
+    expect(result.resultPath).toBe(resultPath)
+    expect(fs.existsSync(resultPath)).toBe(true)
+    expect(fs.existsSync(path.join(targetDir, "result.json"))).toBe(false)
+  })
+
 })

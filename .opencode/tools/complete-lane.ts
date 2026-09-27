@@ -9,6 +9,7 @@ export interface CompleteLaneOptions {
   taskPath: string
   privateDir: string
   workspaceRoot: string
+  resultPath?: string
   latestVerification?: VerificationResult
   ownershipViolations?: PolicyViolation[]
   changedPaths?: string[]
@@ -73,7 +74,8 @@ export class CompleteLaneTool {
       return { completed: false, error: `Constructed result failed schema: ${validation.errors?.join("; ")}` }
     }
 
-    const outPath = path.join(this.options.workspaceRoot, "result.json")
+    const outPath = this.options.resultPath || path.join(this.options.workspaceRoot, "result.json")
+    fs.mkdirSync(path.dirname(outPath), { recursive: true })
     fs.writeFileSync(outPath, JSON.stringify(resultData, null, 2), "utf-8")
 
     return { completed: true, resultPath: outPath }

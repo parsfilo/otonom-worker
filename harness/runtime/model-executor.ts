@@ -1,6 +1,7 @@
 import { ModelSelector } from "./model-selector.js"
 import { AgentRunner, AgentRunResult, AgentExecutionStatus } from "./agent-runner.js"
 import { CapabilityRuntimeManager, OPENCODE_COMMAND, opencodeArgs } from "./capability-runtime.js"
+import { GitChangeDetector } from "../finalizer/git-detector.js"
 import path from "node:path"
 
 export interface ModelExecutorOptions {
@@ -11,12 +12,16 @@ export interface ModelExecutorOptions {
   workspaceDir?: string
   opencodeConfigPath?: string
   opencodeConfigDir?: string
+  agentEnv?: Record<string, string>
+  requiresChanges?: boolean
+  baseSha?: string
 }
 
 export interface ModelExecutionAttempt {
   model: string
   status: AgentExecutionStatus
   durationMs: number
+  errorCategory?: string
 }
 
 export interface ModelExecutionResult {
@@ -36,6 +41,9 @@ export class ModelExecutor {
   private workspaceDir?: string
   private opencodeConfigPath?: string
   private opencodeConfigDir?: string
+  private agentEnv: Record<string, string>
+  private requiresChanges: boolean
+  private baseSha?: string
 
   constructor(options: ModelExecutorOptions = {}) {
     this.selector = options.selector || new ModelSelector()
@@ -45,12 +53,15 @@ export class ModelExecutor {
     this.workspaceDir = options.workspaceDir
     this.opencodeConfigPath = options.opencodeConfigPath
     this.opencodeConfigDir = options.opencodeConfigDir
+    this.agentEnv = options.agentEnv || {}
+    this.requiresChanges = options.requiresChanges === true
+    this.baseSha = options.baseSha
   }
 
   public async executeLane(
     laneId: string,
     role: string,
-    prompt = "Execute the task contract in task.json. Run verification and call complete_lane when finished."
+    prompt = "Execute the task contract. Run verification and call complete_lane when finished."
   ): Promise<ModelExecutionResult> {
     const attempts: ModelExecutionAttempt[] = []
     const attemptedModels: string[] = []
@@ -74,13 +85,12 @@ export class ModelExecutor {
           success: false,
           status: attempts[attempts.length - 1]?.status || "UNAVAILABLE",
           attempts,
-          error: "FREE_MODEL_UNAVAILABLE"
+          error: attempts[attempts.length - 1]?.errorCategory || "FREE_MODEL_UNAVAILABLE"
         }
       }
 
       attemptedModels.push(model)
 
-      // Create runner (custom factory in tests or real AgentRunner)
       let runner: { run: () => Promise<AgentRunResult> }
       if (this.runnerFactory) {
         runner = this.runnerFactory(model)
@@ -112,23 +122,48 @@ export class ModelExecutor {
           env:
             this.opencodeConfigPath && this.opencodeConfigDir
               ? {
+                  ...this.agentEnv,
                   OPENCODE_CONFIG: this.opencodeConfigPath,
-                  OPENCODE_CONFIG_DIR: this.opencodeConfigDir
+                  OPENCODE_CONFIG_DIR: this.opencodeConfigDir,
+                  OTONOM_MODEL_USED: model
                 }
-              : undefined
+              : {
+                  ...this.agentEnv,
+                  OTONOM_MODEL_USED: model
+                }
         })
       }
 
-      const runResult = await runner.run()
+      let runResult = await runner.run()
+
+      if (
+        runResult.status === "PASS" &&
+        this.requiresChanges &&
+        this.workspaceDir
+      ) {
+        const detector = new GitChangeDetector({
+          workspaceRoot: this.workspaceDir,
+          baseSha: this.baseSha || "HEAD"
+        })
+        const changes = detector.detectChanges().actualChangedPaths
+        if (changes.length === 0) {
+          runResult = {
+            ...runResult,
+            status: "FAIL",
+            errorCategory: "NO_WORK_PRODUCT",
+            sanitizedSummary: `[OTONOM-HARNESS] Lane '${laneId}' produced no required repository changes.`
+          }
+        }
+      }
 
       this.selector.recordAttempt(laneId, role, model, runResult.status)
       attempts.push({
         model,
         status: runResult.status,
-        durationMs: runResult.durationMs
+        durationMs: runResult.durationMs,
+        errorCategory: runResult.errorCategory
       })
 
-      // 1. Success on current model
       if (runResult.status === "PASS") {
         return {
           success: true,
@@ -139,19 +174,18 @@ export class ModelExecutor {
         }
       }
 
-      // 2. Transient or infrastructure failure: continue loop to next fallback model
       const isTransientOrInfrastructure =
         runResult.status === "RATE_LIMITED" ||
         runResult.status === "STALLED" ||
         runResult.status === "UNAVAILABLE" ||
         runResult.errorCategory === "PROCESS_ERROR" ||
-        runResult.errorCategory === "MODEL_UNAVAILABLE"
+        runResult.errorCategory === "MODEL_UNAVAILABLE" ||
+        runResult.errorCategory === "NO_WORK_PRODUCT"
 
       if (isTransientOrInfrastructure && i + 1 < this.maxAttempts) {
         continue
       }
 
-      // 3. Deterministic code / verification failure: do NOT retry across models forever
       if (runResult.status === "FAIL") {
         return {
           success: false,
@@ -159,7 +193,7 @@ export class ModelExecutor {
           actualModel: model,
           attempts,
           lastResult: runResult,
-          error: "Deterministic execution failure"
+          error: runResult.errorCategory || "Deterministic execution failure"
         }
       }
     }
@@ -169,7 +203,7 @@ export class ModelExecutor {
       status: attempts[attempts.length - 1]?.status || "FAIL",
       actualModel: attemptedModels[attemptedModels.length - 1],
       attempts,
-      error: `Maximum model attempts (${this.maxAttempts}) exhausted`
+      error: attempts[attempts.length - 1]?.errorCategory || `Maximum model attempts (${this.maxAttempts}) exhausted`
     }
   }
 }

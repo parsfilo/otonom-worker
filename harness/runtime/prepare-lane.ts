@@ -34,15 +34,15 @@ export function prepareLane(
   const serenaRuntime = profile.serena
     ? capabilityManager.prepareSerenaHome(controlDir)
     : undefined
-  const pluginPath = capabilityManager.copyHarnessPlugin(opencodeConfigDir)
+  const pluginPath = path.resolve(process.cwd(), ".opencode/plugins/otonom-harness.ts")
   capabilityManager.writeLaneConfig(
     (currentTask as any).role,
     targetWorkspace,
     opencodeConfigPath,
-    { serenaHomeDir: serenaRuntime?.homeDir }
+    { serenaHomeDir: serenaRuntime?.homeDir, pluginPath }
   )
   console.log(`[Prepare Lane] Configured role capabilities (${(currentTask as any).role}) at: ${opencodeConfigPath}`)
-  console.log(`[Prepare Lane] Copied harness plugin to: ${pluginPath}`)
+  console.log(`[Prepare Lane] Using harness plugin from: ${pluginPath}`)
 }
 
 if (process.argv[1] && process.argv[1].endsWith("prepare-lane.ts")) {

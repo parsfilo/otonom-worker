@@ -55,38 +55,60 @@
     },
     "objectives": {
       "type": "array",
-      "items": { "type": "string", "minLength": 5 },
+      "items": {
+        "type": "string",
+        "minLength": 5
+      },
       "minItems": 1
     },
     "allowed_write_paths": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "minItems": 1,
       "description": "List of globs defining path ownership for this task"
     },
     "forbidden_write_paths": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "default": [],
       "description": "List of globs explicitly forbidden even if matching allowed_write_paths"
     },
     "acceptance_criteria": {
       "type": "array",
-      "items": { "type": "string", "minLength": 5 },
+      "items": {
+        "type": "string",
+        "minLength": 5
+      },
       "minItems": 1
     },
     "verification_profile": {
       "type": "string",
-      "enum": ["targeted", "lane", "full", "review-only", "smoke-doc"]
+      "enum": [
+        "targeted",
+        "lane",
+        "full",
+        "review-only",
+        "smoke-doc"
+      ]
     },
     "required_skills": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "default": []
     },
     "optional_capabilities": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "default": []
     },
     "timeout_minutes": {
@@ -103,12 +125,20 @@
     },
     "retry_class": {
       "type": "string",
-      "enum": ["immediate", "different-model", "manual", "none"],
+      "enum": [
+        "immediate",
+        "different-model",
+        "manual",
+        "none"
+      ],
       "default": "different-model"
     },
     "dependency_ids": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$" },
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+      },
       "default": []
     },
     "pr_title_template": {
@@ -117,16 +147,30 @@
     },
     "pr_body_metadata": {
       "type": "object",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "labels": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "default": []
     },
     "risk_classification": {
       "type": "string",
-      "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "requires_changes": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, a successful lane must produce at least one authoritative repository change."
     }
   }
 }

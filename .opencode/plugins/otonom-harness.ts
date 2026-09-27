@@ -1,10 +1,13 @@
 import fs from "node:fs"
 import path from "node:path"
+import { tool, type Plugin } from "@opencode-ai/plugin"
 import { sanitizeEnv } from "../../harness/policies/env-policy.js"
 import { evaluateCommandPolicy } from "../../harness/policies/command-policy.js"
 import { OwnershipTracker } from "../../harness/policies/ownership.js"
 import { LoopDetector, LoopStatus } from "../../harness/policies/loop-detector.js"
 import { HarnessLogger } from "../../harness/logging/logger.js"
+import { GitChangeDetector } from "../../harness/finalizer/git-detector.js"
+import type { VerificationResult } from "../../harness/verification/runner.js"
 import { TaskContextTool } from "../tools/task-context.js"
 import { RecordFindingTool } from "../tools/record-finding.js"
 import { CrossLaneRequestTool } from "../tools/cross-lane-request.js"
@@ -13,14 +16,25 @@ import { CompleteLaneTool } from "../tools/complete-lane.js"
 
 export interface OtonomPluginContext {
   taskPath?: string
+  resultPath?: string
+  privateDir?: string
   workspaceRoot?: string
   lane?: string
   runnerTemp?: string
 }
 
-export function createOtonomPlugin(options: OtonomPluginContext = {}) {
-  const workspaceRoot = options.workspaceRoot || process.cwd()
-  const taskPath = options.taskPath || process.env.TASK_PATH || path.join(workspaceRoot, "task.json")
+function asToolOutput(value: unknown): string {
+  return JSON.stringify(value)
+}
+
+export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
+  const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd())
+  const taskPath = path.resolve(
+    options.taskPath || process.env.TASK_PATH || path.join(workspaceRoot, "task.json")
+  )
+  const resultPath = path.resolve(
+    options.resultPath || process.env.RESULT_PATH || path.join(path.dirname(taskPath), "result.json")
+  )
 
   let task: any = null
   let lane = options.lane || process.env.LANE_ID || "default-lane"
@@ -30,7 +44,7 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}) {
       task = JSON.parse(fs.readFileSync(taskPath, "utf-8"))
       lane = task.id || lane
     } catch {
-      // Task loading error handled in initialization
+      // Task loading error is surfaced by task_context / completion.
     }
   }
 
@@ -38,105 +52,84 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}) {
     lane,
     runnerTemp: options.runnerTemp
   })
+  const privateDir = path.resolve(
+    options.privateDir || process.env.PRIVATE_DIR || logger.getPrivateLogDir()
+  )
+  fs.mkdirSync(privateDir, { recursive: true })
 
   const ownershipTracker = new OwnershipTracker({
-    allowedWritePaths: task ? task.allowed_write_paths : ["**"],
+    allowedWritePaths: task ? task.allowed_write_paths : [],
     forbiddenWritePaths: task ? task.forbidden_write_paths || [] : []
   })
-
   const loopDetector = new LoopDetector()
-
-  // Tool instances
   const taskContextTool = new TaskContextTool(taskPath)
-  const recordFindingTool = new RecordFindingTool(logger.getPrivateLogDir())
-  const crossLaneRequestTool = new CrossLaneRequestTool(logger.getPrivateLogDir(), lane)
+  const recordFindingTool = new RecordFindingTool(privateDir)
+  const crossLaneRequestTool = new CrossLaneRequestTool(privateDir, lane)
   const runVerificationTool = new RunVerificationTool({ cwd: workspaceRoot })
-  const completeLaneTool = new CompleteLaneTool({
-    taskPath,
-    privateDir: logger.getPrivateLogDir(),
-    workspaceRoot
-  })
+  let latestVerification: VerificationResult | undefined
 
-  return {
-    name: "otonom-harness",
-    hooks: {
-      /**
-       * HOOK: shell.env
-       * Strips credentials, injects safe CI variables
-       */
-      "shell.env": async (_input: any, output: { env: Record<string, string> }) => {
-        output.env = sanitizeEnv(output.env || process.env)
-      },
+  const hooks = {
+    "shell.env": async (_input: any, output: { env: Record<string, string> }) => {
+      output.env = sanitizeEnv(output.env || process.env)
+    },
 
-      /**
-       * HOOK: tool.execute.before
-       * Enforces command policy, ownership on edit, and loop detection
-       */
-      "tool.execute.before": async (
-        input: { tool: string; sessionID?: string; callID?: string },
-        output: { args: any }
-      ) => {
-        // 1. Loop detection
-        const loopState = loopDetector.recordToolCall(input.tool, output.args)
-        if (loopState === LoopStatus.WARNING) {
-          logger.logPrivateDiagnostic(`[LoopDetector] Stall warning on repeated tool: ${input.tool}`)
-        } else if (loopState === LoopStatus.STALLED) {
-          logger.logPrivateDiagnostic(`[LoopDetector] STALLED condition reached on tool: ${input.tool}`)
-          throw new Error("Loop detected: identical tool call repeated excessively. Session stalled.")
+    "tool.execute.before": async (
+      input: { tool: string; sessionID?: string; callID?: string },
+      output: { args: any }
+    ) => {
+      const loopState = loopDetector.recordToolCall(input.tool, output.args)
+      if (loopState === LoopStatus.WARNING) {
+        logger.logPrivateDiagnostic(`[LoopDetector] Stall warning on repeated tool: ${input.tool}`)
+      } else if (loopState === LoopStatus.STALLED) {
+        logger.logPrivateDiagnostic(`[LoopDetector] STALLED condition reached on tool: ${input.tool}`)
+        throw new Error("Loop detected: identical tool call repeated excessively. Session stalled.")
+      }
+
+      if (input.tool === "bash") {
+        const command = output.args?.command || ""
+        const evalResult = evaluateCommandPolicy(command)
+        if (!evalResult.allowed) {
+          logger.logPrivateDiagnostic(`[CommandPolicy] BLOCKED: ${command} (${evalResult.reason})`)
+          throw new Error(`Command blocked by harness security policy: ${evalResult.reason}`)
         }
+      }
 
-        // 2. Command Policy for bash
-        if (input.tool === "bash") {
-          const command = output.args?.command || ""
-          const evalResult = evaluateCommandPolicy(command)
-          if (!evalResult.allowed) {
-            logger.logPrivateDiagnostic(`[CommandPolicy] BLOCKED: ${command} (${evalResult.reason})`)
-            throw new Error(`Command blocked by harness security policy: ${evalResult.reason}`)
+      if (["edit", "write", "patch"].includes(input.tool)) {
+        const rawTargetPath = output.args?.filePath || output.args?.path || ""
+        if (rawTargetPath) {
+          const relativePath = path.isAbsolute(rawTargetPath)
+            ? path.relative(workspaceRoot, rawTargetPath)
+            : rawTargetPath
+          const check = ownershipTracker.recordEdit(relativePath)
+          if (!check.allowed) {
+            logger.logPrivateDiagnostic(`[OwnershipPolicy] BLOCKED EDIT: ${relativePath}`)
+            throw new Error(`Edit forbidden by task ownership: ${check.violation?.detail}`)
           }
         }
+      }
+    },
 
-        // 3. Ownership Policy on file write/edit
-        if (["edit", "write", "patch"].includes(input.tool)) {
-          const targetPath = output.args?.filePath || output.args?.path || ""
-          if (targetPath) {
-            const check = ownershipTracker.recordEdit(targetPath)
-            if (!check.allowed) {
-              logger.logPrivateDiagnostic(`[OwnershipPolicy] BLOCKED EDIT: ${targetPath}`)
-              throw new Error(`Edit forbidden by task ownership: ${check.violation?.detail}`)
-            }
-          }
-        }
-      },
+    "tool.execute.after": async (
+      input: { tool: string; sessionID?: string; callID?: string; args: any },
+      output: { title?: string; output?: string; metadata?: any }
+    ) => {
+      const outStr = typeof output.output === "string" ? output.output : JSON.stringify(output.output || "")
+      logger.logPrivateTelemetry({
+        tool: input.tool,
+        outputLength: outStr.length,
+        truncated: outStr.length > 2000,
+        loopMetrics: loopDetector.getMetrics(),
+        ownershipViolationsCount: ownershipTracker.getViolations().length
+      })
+    },
 
-      /**
-       * HOOK: tool.execute.after
-       * Records private structured telemetry
-       */
-      "tool.execute.after": async (
-        input: { tool: string; sessionID?: string; callID?: string; args: any },
-        output: { title?: string; output?: string; metadata?: any }
-      ) => {
-        const outStr = typeof output.output === "string" ? output.output : JSON.stringify(output.output || "")
-        logger.logPrivateTelemetry({
-          tool: input.tool,
-          outputLength: outStr.length,
-          truncated: outStr.length > 2000,
-          loopMetrics: loopDetector.getMetrics(),
-          ownershipViolationsCount: ownershipTracker.getViolations().length
-        })
-      },
+    "experimental.session.compacting": async (
+      _input: { sessionID: string },
+      output: { context: string[]; prompt?: string }
+    ) => {
+      if (!task) return
 
-      /**
-       * HOOK: experimental.session.compacting
-       * Preserves critical task state across session compaction
-       */
-      "experimental.session.compacting": async (
-        _input: { sessionID: string },
-        output: { context: string[]; prompt?: string }
-      ) => {
-        if (!task) return
-
-        output.context.push(`
+      output.context.push(`
 ### COMPACTED SWARM TASK ANCHOR
 - TASK_ID: ${task.id}
 - ROLE: ${task.role}
@@ -146,49 +139,138 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}) {
 ${task.objectives.map((o: string) => `  * ${o}`).join("\n")}
 - ACCEPTANCE_CRITERIA:
 ${task.acceptance_criteria.map((c: string) => `  * ${c}`).join("\n")}
+- VERIFICATION_PROFILE: ${task.verification_profile}
+- REQUIRES_CHANGES: ${task.requires_changes === true ? "true" : "false"}
 - OWNERSHIP_STATUS: ${ownershipTracker.hasViolations() ? "VIOLATION_PRESENT" : "CLEAN"}
-- NOTE: Free model execution must follow task contract. No remote push. Run run_verification and complete_lane when finished.
-        `)
-      },
-
-      /**
-       * Event handlers: session.idle, session.error, file.edited
-       */
-      event: async ({ event }: { event: any }) => {
-        if (event.type === "file.edited") {
-          if (event.path) {
-            ownershipTracker.recordEdit(event.path)
-            loopDetector.recordProgress()
-          }
-        }
-
-        if (event.type === "session.idle") {
-          logger.logPrivateDiagnostic("[Session] Received session.idle event")
-        }
-
-        if (event.type === "session.error") {
-          logger.logPrivateDiagnostic(`[Session Error] Error event received: ${event.error?.name || "unspecified"}`)
-        }
-      }
+- NOTE: Free model execution must follow the task contract. No remote push. Run run_verification and complete_lane when finished.
+      `)
     },
+
+    event: async ({ event }: { event: any }) => {
+      if (event.type === "file.edited" && event.path) {
+        const relativePath = path.isAbsolute(event.path)
+          ? path.relative(workspaceRoot, event.path)
+          : event.path
+        ownershipTracker.recordEdit(relativePath)
+        loopDetector.recordProgress()
+      }
+      if (event.type === "session.idle") {
+        logger.logPrivateDiagnostic("[Session] Received session.idle event")
+      }
+      if (event.type === "session.error") {
+        logger.logPrivateDiagnostic(`[Session Error] Error event received: ${event.error?.name || "unspecified"}`)
+      }
+    }
+  }
+
+  const toolDefinitions = {
+    task_context: tool({
+      description: "Read the current OTONOM lane task contract from trusted control storage.",
+      args: {},
+      async execute() {
+        return asToolOutput(await taskContextTool.execute())
+      }
+    }),
+
+    run_verification: tool({
+      description: "Run one named trusted verification profile in the target workspace.",
+      args: {
+        profile: tool.schema.string().describe("Verification profile from the task contract")
+      },
+      async execute(args) {
+        latestVerification = await runVerificationTool.execute({ profile: args.profile })
+        return asToolOutput(latestVerification)
+      }
+    }),
+
+    complete_lane: tool({
+      description: "Complete the lane only after verification and ownership checks pass, writing result.json to trusted control storage.",
+      args: {},
+      async execute() {
+        if (!task) {
+          return asToolOutput({ completed: false, error: "TASK_CONTEXT_MISSING" })
+        }
+        const changedPaths = new GitChangeDetector({
+          workspaceRoot,
+          baseSha: task.base_sha
+        }).detectChanges().actualChangedPaths
+        const completeLaneTool = new CompleteLaneTool({
+          taskPath,
+          resultPath,
+          privateDir,
+          workspaceRoot,
+          latestVerification,
+          ownershipViolations: ownershipTracker.getViolations(),
+          changedPaths,
+          modelUsed: process.env.OTONOM_MODEL_USED || "opencode-runtime",
+          loopMetrics: loopDetector.getMetrics()
+        })
+        return asToolOutput(await completeLaneTool.execute())
+      }
+    }),
+
+    record_finding: tool({
+      description: "Record a bounded structured finding in private runner storage.",
+      args: {
+        id: tool.schema.string(),
+        severity: tool.schema.enum(["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+        path: tool.schema.string(),
+        summary: tool.schema.string(),
+        evidence: tool.schema.string(),
+        rule_id: tool.schema.string().optional(),
+        status: tool.schema.enum(["open", "fixed", "suppressed", "wontfix"])
+      },
+      async execute(args) {
+        return asToolOutput(await recordFindingTool.execute(args))
+      }
+    }),
+
+    cross_lane_request: tool({
+      description: "Record a structured request for work owned by another lane.",
+      args: {
+        id: tool.schema.string(),
+        target_lane: tool.schema.string(),
+        requested_path: tool.schema.string(),
+        justification: tool.schema.string(),
+        proposed_change_description: tool.schema.string()
+      },
+      async execute(args) {
+        return asToolOutput(await crossLaneRequestTool.execute(args))
+      }
+    })
+  }
+
+  return {
+    name: "otonom-harness",
+    hooks,
+    tool: toolDefinitions,
     tools: {
       task_context: taskContextTool,
       record_finding: recordFindingTool,
       cross_lane_request: crossLaneRequestTool,
-      run_verification: runVerificationTool,
-      complete_lane: completeLaneTool
+      run_verification: runVerificationTool
     },
     ownershipTracker,
     loopDetector,
-    logger
+    logger,
+    taskPath,
+    resultPath
   }
 }
 
-// Default export conforming to OpenCode plugin factory signature
-export default async function OtonomPlugin(ctx: any) {
+export const OtonomPlugin: Plugin = async (ctx) => {
   const pluginInstance = createOtonomPlugin({
-    workspaceRoot: ctx?.directory || process.cwd()
+    taskPath: process.env.TASK_PATH,
+    resultPath: process.env.RESULT_PATH,
+    privateDir: process.env.PRIVATE_DIR,
+    workspaceRoot: ctx?.directory || process.cwd(),
+    lane: process.env.LANE_ID
   })
 
-  return pluginInstance.hooks
+  return {
+    ...pluginInstance.hooks,
+    tool: pluginInstance.tool
+  }
 }
+
+export default OtonomPlugin

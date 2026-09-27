@@ -24,7 +24,8 @@ export class TaskContextTool {
       acceptance_criteria: parsed.acceptance_criteria,
       verification_profile: parsed.verification_profile,
       timeout_minutes: parsed.timeout_minutes,
-      risk_classification: parsed.risk_classification
+      risk_classification: parsed.risk_classification,
+      requires_changes: parsed.requires_changes === true
     }
   }
 }

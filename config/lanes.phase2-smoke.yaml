@@ -18,5 +18,6 @@ tasks:
       - "No source code or repository configuration files are modified"
       - "Verification profile smoke-doc exits with code 0"
     verification_profile: "smoke-doc"
+    requires_changes: true
     timeout_minutes: 15
     risk_classification: "LOW"
