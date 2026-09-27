@@ -1,0 +1,52 @@
+# Harness Security and Operational Policies
+
+environment:
+  sensitive_patterns:
+    - "^DOPPLER_"
+    - "^GITHUB_TOKEN$"
+    - "^GH_TOKEN$"
+    - "^GITHUB_PAT$"
+    - "^ACTIONS_RUNTIME_TOKEN$"
+    - "^ACTIONS_ID_TOKEN_REQUEST_TOKEN$"
+    - "^ACTIONS_ID_TOKEN_REQUEST_URL$"
+    - "^AWS_SECRET_ACCESS_KEY$"
+    - "^DATABASE_URL$"
+    - "^PGPASSWORD$"
+    - "^PRIVATE_KEY"
+    - "SECRET"
+    - "API_KEY"
+    - "PASSWORD"
+
+  injected_defaults:
+    CI: "1"
+    GIT_TERMINAL_PROMPT: "0"
+    GIT_PAGER: "cat"
+    PAGER: "cat"
+    NO_COLOR: "1"
+    OPENCODE_DISABLE_LSP_DOWNLOAD: "true"
+
+commands:
+  blocked_subcommands:
+    - "git push"
+    - "git push --force"
+    - "gh pr create"
+    - "gh pr merge"
+    - "gh auth token"
+    - "gh auth status"
+    - "sudo"
+    - "su"
+    - "ssh"
+    - "scp"
+    - "printenv"
+    - "export"
+
+loop_detector:
+  max_identical_tool_calls: 3
+  max_file_rereads: 4
+  max_failing_commands_without_diff: 3
+
+logging:
+  private_path_template: "$RUNNER_TEMP/otonom-private/{lane}/"
+  sanitizer_token_replacement: "[REDACTED_TOKEN]"
+  sanitizer_key_replacement: "[REDACTED_PRIVATE_KEY]"
+  sanitizer_diff_replacement: "[DIFF_REDACTED]"

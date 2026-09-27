@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otonom.ai/schemas/cross-lane-request.schema.json",
+  "title": "CrossLaneRequest",
+  "type": "object",
+  "required": [
+    "id",
+    "requesting_lane",
+    "target_lane",
+    "requested_path",
+    "justification",
+    "proposed_change_description",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^clr-[a-z0-9-]{4,32}$"
+    },
+    "requesting_lane": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+    },
+    "target_lane": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+    },
+    "requested_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "justification": {
+      "type": "string",
+      "minLength": 10
+    },
+    "proposed_change_description": {
+      "type": "string",
+      "minLength": 10
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "accepted", "rejected"],
+      "default": "pending"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

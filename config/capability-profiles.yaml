@@ -1,0 +1,86 @@
+# Capability Profiles for OpenCode Swarm Agents
+# Defines tool, LSP, MCP, and scanner availability per role
+
+builder-core:
+  description: "Core TypeScript/JavaScript feature and refactor builder"
+  read_only: false
+  native_lsp: true
+  serena: true
+  ast_grep: true
+  context7: optional
+  codegraph: false
+  postgres: false
+  security_scanners: minimal
+  nested_agents: false
+
+builder-db:
+  description: "Database, migration, and concurrency specialist"
+  read_only: false
+  native_lsp: true
+  serena: true
+  ast_grep: true
+  postgres: true
+  codegraph: false
+  security_scanners: minimal
+  nested_agents: false
+
+reviewer-cross-system:
+  description: "Cross-system architectural consistency and blast radius reviewer"
+  read_only: true
+  native_lsp: true
+  serena: true
+  codegraph: true
+  ast_grep: true
+  postgres: false
+  nested_agents: false
+
+security-reviewer:
+  description: "Security boundary, taint tracking, and vulnerability auditor"
+  read_only: true
+  serena: true
+  codegraph: true
+  ast_grep: true
+  semgrep: true
+  actionlint: true
+  zizmor: true
+  shellcheck: true
+  nested_agents: false
+
+ci-reviewer:
+  description: "GitHub Actions workflow and runner policy reviewer"
+  read_only: true
+  native_lsp: false
+  serena: false
+  codegraph: false
+  actionlint: true
+  zizmor: true
+  shellcheck: true
+  nested_agents: false
+
+ui-builder:
+  description: "Frontend interface and user interaction builder"
+  read_only: false
+  native_lsp: true
+  serena: true
+  ast_grep: true
+  playwright_cli: true
+  codegraph: false
+  nested_agents: false
+
+integration-reviewer:
+  description: "Integration verification and full-flow test validator"
+  read_only: true
+  serena: true
+  codegraph: true
+  ast_grep: true
+  full_verification: true
+  nested_agents: false
+
+final-auditor:
+  read_only: true
+  serena: true
+  codegraph: true
+  ast_grep: true
+  security_scanners: true
+  full_verification: true
+  nested_agents: false

@@ -1,0 +1,69 @@
+# Example Wave Manifest for OTONOM Worker Swarm
+# Illustrates data-driven matrix definition for concurrent lanes
+
+version: "1.0"
+wave_id: "wave-01-core-hardening"
+base_ref: "main"
+base_sha: "0123456789abcdef0123456789abcdef01234567"
+
+tasks:
+  - id: "webhook-durability"
+    title: "Implement idempotent webhook durability and replay log"
+    role: "builder-core"
+    source_repository: "oaslananka/otonom"
+    base_sha: "0123456789abcdef0123456789abcdef01234567"
+    objectives:
+      - "Add idempotency key verification to incoming webhooks"
+      - "Persist unhandled webhook payloads to durable dead-letter queue"
+      - "Implement idempotent replay test suite"
+    allowed_write_paths:
+      - "src/webhooks/**"
+      - "tests/webhooks/**"
+    forbidden_write_paths:
+      - "prisma/**"
+      - "src/auth/**"
+    acceptance_criteria:
+      - "All webhook tests pass with 0 flakes"
+      - "Duplicate webhook payloads return 200 without duplicate execution"
+    verification_profile: "lane"
+    timeout_minutes: 25
+    risk_classification: "MEDIUM"
+
+  - id: "db-concurrency"
+    title: "Enforce serializable transaction isolation on director mutations"
+    role: "builder-db"
+    source_repository: "oaslananka/otonom"
+    base_sha: "0123456789abcdef0123456789abcdef01234567"
+    objectives:
+      - "Add row-level locking on active mutation revision records"
+      - "Reject stale revisions with optimistic lock error"
+      - "Add race condition regression test with 20 parallel threads"
+    allowed_write_paths:
+      - "src/db/**"
+      - "tests/db/**"
+    forbidden_write_paths:
+      - "src/webhooks/**"
+    acceptance_criteria:
+      - "Zero race-condition duplicate mutations under high concurrency test"
+      - "All database integration tests pass"
+    verification_profile: "lane"
+    timeout_minutes: 30
+    risk_classification: "HIGH"
+
+  - id: "authority-boundary"
+    title: "Verify Director and Project Brain mutation gate invariants"
+    role: "reviewer-cross-system"
+    source_repository: "oaslananka/otonom"
+    base_sha: "0123456789abcdef0123456789abcdef01234567"
+    objectives:
+      - "Audit all callers of Brain mutation methods"
+      - "Ensure all state mutations route exclusively through Director"
+      - "Record findings for any direct database mutation bypass"
+    allowed_write_paths:
+      - "docs/audit/**"
+    acceptance_criteria:
+      - "Complete call graph traced for Director.mutate"
+      - "Zero uncaught mutation bypasses"
+    verification_profile: "review-only"
+    timeout_minutes: 20
+    risk_classification: "LOW"

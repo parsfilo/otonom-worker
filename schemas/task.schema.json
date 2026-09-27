@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otonom.ai/schemas/task.schema.json",
+  "title": "TaskManifest",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "role",
+    "source_repository",
+    "base_sha",
+    "objectives",
+    "allowed_write_paths",
+    "acceptance_criteria",
+    "verification_profile",
+    "risk_classification"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "description": "Unique normalized identifier for the task/lane"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 120
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "builder-core",
+        "builder-db",
+        "reviewer-cross-system",
+        "security-reviewer",
+        "ci-reviewer",
+        "ui-builder",
+        "integration-reviewer",
+        "final-auditor"
+      ]
+    },
+    "source_repository": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
+    },
+    "base_ref": {
+      "type": "string",
+      "default": "main"
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Exact 40-character commit SHA used for reproducibility"
+    },
+    "objectives": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 5 },
+      "minItems": 1
+    },
+    "allowed_write_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "List of globs defining path ownership for this task"
+    },
+    "forbidden_write_paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "description": "List of globs explicitly forbidden even if matching allowed_write_paths"
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 5 },
+      "minItems": 1
+    },
+    "verification_profile": {
+      "type": "string",
+      "enum": ["targeted", "lane", "full", "review-only"]
+    },
+    "required_skills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "optional_capabilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "timeout_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 360,
+      "default": 30
+    },
+    "max_turns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50
+    },
+    "retry_class": {
+      "type": "string",
+      "enum": ["immediate", "different-model", "manual", "none"],
+      "default": "different-model"
+    },
+    "dependency_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$" },
+      "default": []
+    },
+    "pr_title_template": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "pr_body_metadata": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "labels": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "risk_classification": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    }
+  }
+}

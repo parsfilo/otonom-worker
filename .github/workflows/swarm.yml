@@ -1,0 +1,203 @@
+name: OTONOM Swarm Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Path to wave/tasks manifest file (YAML or JSON)"
+        required: true
+        default: "config/lanes.example.yaml"
+      source_ref:
+        description: "Target repository Git commit SHA or ref"
+        required: true
+        default: "main"
+      max_parallel:
+        description: "Maximum concurrent agent jobs (1 to 20)"
+        required: true
+        default: "5"
+      lane_filter:
+        description: "Optional single lane ID to filter execution"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry-run mode: do not push branches or open PRs"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-generate-matrix:
+    name: Generate Execution Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+      max_parallel: ${{ steps.generate.outputs.max_parallel }}
+    steps:
+      - name: Checkout Harness Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Harness Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate Skills and Configuration
+        run: |
+          pnpm tsx scripts/validate-skills.ts
+          pnpm typecheck
+
+      - name: Generate Matrix
+        id: generate
+        run: |
+          MAX_P="${{ github.event.inputs.max_parallel }}"
+          if [ "$MAX_P" -gt 20 ]; then
+            echo "ERROR: max_parallel cannot exceed 20 (requested $MAX_P)" >&2
+            exit 1
+          fi
+
+          FILTER="${{ github.event.inputs.lane_filter }}"
+          MANIFEST="${{ github.event.inputs.manifest_path }}"
+
+          MATRIX_JSON=$(pnpm tsx harness/matrix/generator.ts "$MANIFEST" "$MAX_P" "$FILTER")
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+          echo "max_parallel=$MAX_P" >> "$GITHUB_OUTPUT"
+
+  run-agent:
+    name: "Lane: ${{ matrix.lane }}"
+    needs: validate-and-generate-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout_minutes || 35 }}
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJson(needs.validate-and-generate-matrix.outputs.max_parallel) }}
+      matrix: ${{ fromJson(needs.validate-and-generate-matrix.outputs.matrix) }}
+    env:
+      LANE_ID: ${{ matrix.lane }}
+      BASE_SHA: ${{ matrix.base_sha }}
+      ROLE: ${{ matrix.role }}
+      DRY_RUN: ${{ github.event.inputs.dry_run }}
+      CI: "1"
+      GIT_TERMINAL_PROMPT: "0"
+      GIT_PAGER: "cat"
+      PAGER: "cat"
+      NO_COLOR: "1"
+    steps:
+      - name: Checkout Worker Harness
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Toolchain
+        run: |
+          pnpm install --frozen-lockfile
+          # Pinned OpenCode installation from toolchain.lock.json
+          npm install -g opencode-ai@1.18.32
+          # Pinned Language Servers
+          npm install -g typescript-language-server@4.3.3 yaml-language-server@1.15.0 bash-language-server@5.4.3 @ast-grep/cli@0.45.3
+
+      - name: Initialize Private Storage
+        run: |
+          PRIVATE_DIR="$RUNNER_TEMP/otonom-private/${{ matrix.lane }}"
+          mkdir -p "$PRIVATE_DIR"
+          echo "PRIVATE_DIR=$PRIVATE_DIR" >> "$GITHUB_ENV"
+
+      - name: Prepare Lane Contract
+        run: |
+          pnpm tsx -e "
+            import { loadManifestFile } from './harness/matrix/generator.js';
+            import fs from 'node:fs';
+            const tasks = loadManifestFile('${{ github.event.inputs.manifest_path }}');
+            const current = tasks.find((t: any) => t.id === '${{ matrix.lane }}');
+            if (!current) throw new Error('Task not found in manifest');
+            fs.writeFileSync('task.json', JSON.stringify(current, null, 2));
+          "
+
+      - name: Run OpenCode Agent Headless
+        continue-on-error: true
+        id: agent
+        run: |
+          # OpenCode runs non-interactively using free models
+          # Sensitive credentials are intentionally absent
+          opencode run --auto "Execute the task contract in task.json. Run verification and call complete_lane when finished." || true
+
+      - name: Execute Trusted Finalizer
+        id: finalizer
+        run: |
+          # Trusted Finalizer checks OpenCode process is terminated,
+          # runs verification, validates ownership and schema before branch push
+          pnpm tsx harness/finalizer/cli.ts task.json result.json "$PWD"
+
+      - name: Emit Sanitized Lane Summary
+        if: always()
+        run: |
+          pnpm tsx -e "
+            import fs from 'node:fs';
+            import { formatPublicSummary } from './harness/logging/sanitizer.js';
+            let status = 'FAIL';
+            let filesChanged = 0;
+            let testsPassed = 0;
+            let testsFailed = 1;
+            let policyViolations = 0;
+
+            if (fs.existsSync('result.json')) {
+              try {
+                const res = JSON.parse(fs.readFileSync('result.json', 'utf-8'));
+                status = res.status;
+                filesChanged = res.changed_paths?.length || 0;
+                testsPassed = res.test_summary?.passed || 0;
+                testsFailed = res.test_summary?.failed || 0;
+                policyViolations = res.policy_violations?.length || 0;
+              } catch {}
+            }
+
+            console.log(formatPublicSummary({
+              lane: '${{ matrix.lane }}',
+              status: status as any,
+              filesChanged,
+              testsPassed,
+              testsFailed,
+              policyViolations
+            }));
+          "
+
+  swarm-summary:
+    name: Swarm Execution Summary
+    needs: [validate-and-generate-matrix, run-agent]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Harness
+        uses: actions/checkout@v4
+
+      - name: Report Wave Completion
+        run: |
+          echo "============================================="
+          echo "OTONOM Swarm Wave Execution Completed"
+          echo "Wave: ${{ github.event.inputs.manifest_path }}"
+          echo "Dry Run: ${{ github.event.inputs.dry_run }}"
+          echo "Max Parallel: ${{ needs.validate-and-generate-matrix.outputs.max_parallel }}"
+          echo "============================================="

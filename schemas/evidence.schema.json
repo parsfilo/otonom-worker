@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otonom.ai/schemas/evidence.schema.json",
+  "title": "EvidenceCollection",
+  "type": "object",
+  "required": [
+    "task_id",
+    "lane",
+    "timestamp",
+    "verification_profile",
+    "command_runs",
+    "sanitized_metric_snapshot"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+    },
+    "lane": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verification_profile": {
+      "type": "string"
+    },
+    "command_runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "exit_code", "passed", "duration_ms"],
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "passed": { "type": "boolean" },
+          "duration_ms": { "type": "integer" },
+          "stdout_fingerprint": { "type": "string" },
+          "sanitized_summary": { "type": "string" }
+        }
+      }
+    },
+    "sanitized_metric_snapshot": {
+      "type": "object",
+      "required": ["files_changed_count", "tests_passed", "tests_failed", "policy_violations_count"],
+      "additionalProperties": false,
+      "properties": {
+        "files_changed_count": { "type": "integer", "minimum": 0 },
+        "tests_passed": { "type": "integer", "minimum": 0 },
+        "tests_failed": { "type": "integer", "minimum": 0 },
+        "policy_violations_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

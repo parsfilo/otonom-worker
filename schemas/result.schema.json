@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otonom.ai/schemas/result.schema.json",
+  "title": "LaneExecutionResult",
+  "type": "object",
+  "required": [
+    "task_id",
+    "lane",
+    "base_sha",
+    "status",
+    "model_used",
+    "changed_paths",
+    "verification_results",
+    "test_summary",
+    "policy_violations",
+    "findings_fixed",
+    "remaining_blockers",
+    "cross_lane_request_count",
+    "loop_metrics",
+    "completed_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+    },
+    "lane": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "STALLED", "POLICY_VIOLATION"]
+    },
+    "model_used": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["profile", "command", "exit_code", "passed"],
+        "additionalProperties": false,
+        "properties": {
+          "profile": { "type": "string" },
+          "command": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "passed": { "type": "boolean" },
+          "duration_ms": { "type": "integer" },
+          "sanitized_summary": { "type": "string" }
+        }
+      }
+    },
+    "test_summary": {
+      "type": "object",
+      "required": ["total", "passed", "failed", "skipped"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "policy_violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["policy", "detail", "timestamp"],
+        "additionalProperties": false,
+        "properties": {
+          "policy": { "type": "string" },
+          "detail": { "type": "string" },
+          "target": { "type": "string" },
+          "timestamp": { "type": "string" }
+        }
+      }
+    },
+    "findings_fixed": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "remaining_blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "cross_lane_request_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "loop_metrics": {
+      "type": "object",
+      "required": ["tool_repeats", "file_rereads", "stall_warnings", "diff_hash_changes"],
+      "additionalProperties": false,
+      "properties": {
+        "tool_repeats": { "type": "integer", "minimum": 0 },
+        "file_rereads": { "type": "integer", "minimum": 0 },
+        "stall_warnings": { "type": "integer", "minimum": 0 },
+        "diff_hash_changes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

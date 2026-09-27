@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otonom.ai/schemas/finding.schema.json",
+  "title": "Finding",
+  "type": "object",
+  "required": [
+    "id",
+    "severity",
+    "path",
+    "summary",
+    "evidence",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^find-[a-z0-9-]{4,32}$"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "line_range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 1 },
+        "end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 200
+    },
+    "evidence": {
+      "type": "string",
+      "minLength": 5
+    },
+    "rule_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "fixed", "suppressed", "wontfix"]
+    }
+  }
+}

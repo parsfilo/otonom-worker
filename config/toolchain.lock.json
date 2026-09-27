@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "toolchain_lock_version": "1.0.0",
+  "generated_at": "2026-09-27T21:30:00Z",
+  "runtime": {
+    "opencode": {
+      "version": "1.18.32",
+      "package": "opencode-ai",
+      "npm_registry": "https://registry.npmjs.org/opencode-ai/-/opencode-ai-1.18.32.tgz",
+      "npm_integrity": "sha512-SCrZWdq44y/EoH2+fE4HLcXS+DzpVqHPzmXk3p2RrufYy8LWvpfhRhKtijb5ktvx8r94ScqToqwHxR0BwS65OQ==",
+      "upstream_repo": "https://github.com/anomalyco/opencode",
+      "release_tag": "v1.18.32",
+      "binaries": {
+        "linux-x64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.32/opencode-linux-x64.tar.gz",
+          "sha256": "3046e0404fdc60fb80307e7a47824ba07477364178a4d09baa8548496dd6d43b"
+        },
+        "windows-x64": {
+          "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.32/opencode-windows-x64.zip",
+          "sha256": "1483c72d5adced825590a0ecf8cc18b3e87e535960a125dbf539d33bce135d0f"
+        }
+      }
+    }
+  },
+  "code_intelligence": {
+    "serena": {
+      "upstream_repo": "https://github.com/oraios/serena",
+      "release_tag": "v1.7.0",
+      "commit": "949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
+      "license": "Apache-2.0",
+      "mode": "ephemeral_local",
+      "shared_memory": false
+    },
+    "codegraph": {
+      "upstream_repo": "https://github.com/HoangP8/tokless",
+      "commit": "19ab9803c77563330082033a8bfe24faf53a18db",
+      "license": "MIT",
+      "mode": "ephemeral_local",
+      "profiles": ["reviewer-cross-system", "security-reviewer", "integration-reviewer", "final-auditor"]
+    },
+    "ast_grep": {
+      "package": "@ast-grep/cli",
+      "version": "0.45.3",
+      "npm_integrity": "sha512-Cm07SHb8Q8dJfAQhrPOveAGuuzznmf6IjQa2+0Yvjt8Qfo+XIVbEIo0Prng+UDVMlaCS/FkF2eA8M3F6z4+0Wg==",
+      "cli_only": true,
+      "mcp_server": false
+    }
+  },
+  "vendored_skills": {
+    "superpowers": {
+      "upstream_repo": "https://github.com/obra/superpowers",
+      "commit": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "license": "MIT",
+      "skills": [
+        "systematic-debugging",
+        "test-driven-development",
+        "verification-before-completion",
+        "receiving-code-review",
+        "requesting-code-review",
+        "writing-plans"
+      ]
+    },
+    "trail_of_bits": {
+      "upstream_repo": "https://github.com/trailofbits/skills",
+      "commit": "0cc1c73a5e96749ab32d7ea5e14892fafa6972ae",
+      "license": "Apache-2.0",
+      "skills": [
+        "agentic-actions-auditor",
+        "audit-context-building",
+        "differential-review",
+        "variant-analysis"
+      ]
+    }
+  },
+  "language_servers": {
+    "typescript": {
+      "package": "typescript-language-server",
+      "version": "4.3.3"
+    },
+    "yaml": {
+      "package": "yaml-language-server",
+      "version": "1.15.0"
+    },
+    "bash": {
+      "package": "bash-language-server",
+      "version": "5.4.3"
+    },
+    "eslint": {
+      "package": "vscode-langservers-extracted",
+      "version": "4.10.0"
+    }
+  },
+  "static_analysis": {
+    "semgrep": {
+      "binary": "semgrep",
+      "version": "1.99.0",
+      "cli_only": true
+    },
+    "actionlint": {
+      "binary": "actionlint",
+      "version": "1.7.7"
+    },
+    "zizmor": {
+      "binary": "zizmor",
+      "version": "1.4.1"
+    },
+    "shellcheck": {
+      "binary": "shellcheck",
+      "version": "0.10.0"
+    },
+    "ripgrep": {
+      "binary": "rg",
+      "version": "14.1.1"
+    },
+    "jq": {
+      "binary": "jq",
+      "version": "1.7.1"
+    }
+  }
+}

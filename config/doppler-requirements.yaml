@@ -1,0 +1,90 @@
+# Doppler Configuration & Secrets Contract
+# Defines the exact parameters that WILL be configured in Doppler for Phase 2.
+# ZERO REAL VALUES are included in this specification.
+
+requirements:
+  # ============================================================================
+  # Category: SOURCE_BOOTSTRAP
+  # Credentials required exclusively by trusted bootstrap to clone private repo
+  # ============================================================================
+  - name: "OTONOM_SOURCE_CLONE_TOKEN"
+    type: "secret"
+    consumer: "trusted-bootstrap"
+    required: true
+    purpose: "Fine-grained GitHub read-only PAT for cloning private target repository oaslananka/otonom during trusted bootstrap"
+    exposure_policy: "Injected ONLY during trusted bootstrap; stripped and revoked from filesystem/environment BEFORE OpenCode agent spawns"
+
+  - name: "OTONOM_SOURCE_REPO_URL"
+    type: "config"
+    consumer: "trusted-bootstrap"
+    required: true
+    purpose: "Full HTTPS clone URL for target repository (e.g. https://github.com/oaslananka/otonom.git)"
+    exposure_policy: "Publicly visible in bootstrap configuration"
+
+  # ============================================================================
+  # Category: TARGET_FINALIZER
+  # Credentials required exclusively by trusted finalizer to commit/push/PR
+  # ============================================================================
+  - name: "OTONOM_TARGET_WRITE_TOKEN"
+    type: "secret"
+    consumer: "trusted-finalizer"
+    required: true
+    purpose: "Fine-grained GitHub write PAT with contents:write and pull_requests:write on oaslananka/otonom"
+    exposure_policy: "Injected ONLY after OpenCode agent has terminated and all untrusted verification code has finished running"
+
+  - name: "OTONOM_TARGET_BASE_BRANCH"
+    type: "config"
+    consumer: "trusted-finalizer"
+    required: true
+    purpose: "Base branch on target repository against which swarm PRs will be created (default: main)"
+    exposure_policy: "Publicly visible in workflow configuration"
+
+  # ============================================================================
+  # Category: GIT_IDENTITY
+  # Identity settings for finalizer git commits
+  # ============================================================================
+  - name: "OTONOM_GIT_COMMITTER_NAME"
+    type: "config"
+    consumer: "trusted-finalizer"
+    required: true
+    purpose: "Git commit author name for automated swarm branch commits (e.g. OTONOM Swarm Bot)"
+    exposure_policy: "Publicly visible in git commit history"
+
+  - name: "OTONOM_GIT_COMMITTER_EMAIL"
+    type: "config"
+    consumer: "trusted-finalizer"
+    required: true
+    purpose: "Git commit author email for automated swarm branch commits"
+    exposure_policy: "Publicly visible in git commit history"
+
+  # ============================================================================
+  # Category: HARNESS_CONFIG
+  # Operational boundaries and execution policy knobs
+  # ============================================================================
+  - name: "SWARM_MAX_PARALLEL"
+    type: "config"
+    consumer: "matrix-generator"
+    required: false
+    purpose: "Maximum concurrency cap across GitHub Actions runner jobs (hard bounded <= 20)"
+    exposure_policy: "Publicly visible in workflow logs"
+
+  - name: "SWARM_DEFAULT_TIMEOUT_MINUTES"
+    type: "config"
+    consumer: "matrix-generator"
+    required: false
+    purpose: "Default execution timeout per agent lane in minutes (default: 30)"
+    exposure_policy: "Publicly visible in workflow logs"
+
+  - name: "OPENCODE_PINNED_VERSION"
+    type: "config"
+    consumer: "trusted-bootstrap"
+    required: false
+    purpose: "Version string for OpenCode CLI (defaults to 1.18.32 pinned in toolchain.lock.json)"
+    exposure_policy: "Publicly visible in bootstrap logs"
+
+  - name: "OPENCODE_MODEL_POLICY"
+    type: "config"
+    consumer: "runtime-model-selector"
+    required: false
+    purpose: "Selection policy for free OpenCode models (e.g. zen-flash-first, coder-first)"
+    exposure_policy: "Publicly visible in runner logs"

@@ -1,0 +1,45 @@
+# Default Repository Ownership Rules
+# Enforces lane boundary isolation for the target project
+
+global_rules:
+  default_read: allow
+  default_write: deny
+  require_explicit_task_allowlist: true
+
+# Prohibited paths that no builder lane may touch without security override
+system_forbidden_paths:
+  - ".github/workflows/**"
+  - ".github/actions/**"
+  - "config/secrets/**"
+  - "config/doppler*/**"
+  - "package-lock.json"
+  - "pnpm-lock.yaml"
+  - "yarn.lock"
+  - ".env*"
+
+# Pre-defined lane ownership baselines
+lanes:
+  webhook-durability:
+    allowed:
+      - "src/webhooks/**"
+      - "tests/webhooks/**"
+    forbidden:
+      - "src/auth/**"
+      - "prisma/**"
+
+  db-concurrency:
+    allowed:
+      - "prisma/**"
+      - "src/db/**"
+      - "tests/db/**"
+    forbidden:
+      - "src/webhooks/**"
+
+  authority-model:
+    allowed:
+      - "src/director/**"
+      - "src/brain/**"
+      - "tests/authority/**"
+    forbidden:
+      - "src/webhooks/**"
+      - "src/ui/**"
