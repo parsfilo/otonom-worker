@@ -73,8 +73,10 @@ jobs:
           fi
 
           MATRIX_JSON=$(pnpm tsx harness/matrix/generator.ts "$MANIFEST_PATH" "$MAX_PARALLEL" "$LANE_FILTER")
-          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
-          echo "max_parallel=$MAX_PARALLEL" >> "$GITHUB_OUTPUT"
+          {
+            echo "matrix=$MATRIX_JSON"
+            echo "max_parallel=$MAX_PARALLEL"
+          } >> "$GITHUB_OUTPUT"
 
   run-agent:
     name: "Lane: ${{ matrix.lane }}"
@@ -125,9 +127,11 @@ jobs:
           PRIVATE_DIR="$RUNNER_TEMP/otonom-private/${LANE_ID}"
           TARGET_DIR="$RUNNER_TEMP/target-workspace/${LANE_ID}"
           mkdir -p "$CONTROL_DIR" "$PRIVATE_DIR" "$TARGET_DIR"
-          echo "CONTROL_DIR=$CONTROL_DIR" >> "$GITHUB_ENV"
-          echo "PRIVATE_DIR=$PRIVATE_DIR" >> "$GITHUB_ENV"
-          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
+          {
+            echo "CONTROL_DIR=$CONTROL_DIR"
+            echo "PRIVATE_DIR=$PRIVATE_DIR"
+            echo "TARGET_DIR=$TARGET_DIR"
+          } >> "$GITHUB_ENV"
 
       - name: Prepare Lane Contract
         env:
