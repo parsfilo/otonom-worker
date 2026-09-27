@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
-import { CapabilityRuntimeManager, SerenaRuntimeSupervisor } from "../../harness/runtime/capability-runtime.js"
+import { execFileSync } from "node:child_process"
+import { CapabilityRuntimeManager } from "../../harness/runtime/capability-runtime.js"
 
 describe("Serena Runtime Wiring & Lifecycle", () => {
   let tempDir: string
@@ -19,7 +20,8 @@ describe("Serena Runtime Wiring & Lifecycle", () => {
 
   it("configures Serena MCP in OpenCode config with pinned commit and workspace binding", () => {
     const manager = new CapabilityRuntimeManager()
-    const config = manager.generateOpenCodeConfig("builder-core", tempDir)
+    const serenaHomeDir = path.join(tempDir, "control", "serena-home")
+    const config = manager.generateOpenCodeConfig("builder-core", tempDir, { serenaHomeDir })
 
     expect(config.mcp).toBeDefined()
     expect(config.mcp.serena).toBeDefined()
@@ -32,34 +34,64 @@ describe("Serena Runtime Wiring & Lifecycle", () => {
     )
     expect(serenaMcp.command).toEqual(expect.arrayContaining(["serena", "start-mcp-server", "--project"]))
     expect(serenaMcp.command).not.toContain("serena-mcp-server")
-    expect(serenaMcp.environment.SERENA_SHARED_MEMORY).toBe("false")
+    expect(serenaMcp.environment).toEqual({
+      SERENA_HOME: serenaHomeDir.replace(/\\/g, "/")
+    })
     expect(serenaMcp.env).toBeUndefined()
   })
 
-  it("supervises Serena lifecycle and logs serena_runtime: PASS safely", async () => {
-    const logs: string[] = []
-    const logSpy = vi.spyOn(console, "log").mockImplementation((msg) => {
-      logs.push(msg)
+  it("keeps pinned Serena project initialization outside the target repository", () => {
+    const manager = new CapabilityRuntimeManager()
+    const repoDir = path.join(tempDir, "target-project")
+    const controlDir = path.join(tempDir, "control")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "fixture\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "ignore" })
+
+    const runtime = (manager as any).prepareSerenaHome(controlDir)
+    const config = manager.generateOpenCodeConfig("builder-core", repoDir, {
+      serenaHomeDir: runtime.homeDir
+    })
+    const command = config.mcp.serena.command as string[]
+    execFileSync(command[0], [...command.slice(1, 4), "project", "create", repoDir], {
+      cwd: repoDir,
+      env: { ...process.env, ...config.mcp.serena.environment },
+      stdio: "ignore",
+      timeout: 60000
     })
 
-    const supervisor = new SerenaRuntimeSupervisor({
-      workspaceDir: tempDir,
-      targetSha: "abc1234567890def1234567890def1234567890",
-      mockProcess: true
+    const projectDataDir = path.join(
+      controlDir,
+      "serena-project-data",
+      path.basename(repoDir),
+      ".serena"
+    )
+    expect(fs.existsSync(path.join(projectDataDir, "project.yml"))).toBe(true)
+    expect(fs.existsSync(path.join(repoDir, ".serena"))).toBe(false)
+    expect(
+      execFileSync("git", ["status", "--porcelain=v1", "-uall"], {
+        cwd: repoDir,
+        encoding: "utf-8"
+      })
+    ).toBe("")
+  }, 90000)
+
+  it("uses OpenCode as the only Serena MCP server launch path", () => {
+    const manager = new CapabilityRuntimeManager()
+    const config = manager.generateOpenCodeConfig("builder-core", tempDir, {
+      serenaHomeDir: path.join(tempDir, "control", "serena-home")
     })
+    const runLaneSource = fs.readFileSync(
+      path.resolve(process.cwd(), "harness/runtime/run-lane.ts"),
+      "utf-8"
+    )
 
-    const handle = await supervisor.start()
-    expect(handle.running).toBe(true)
-
-    await supervisor.stop()
-    expect(handle.running).toBe(false)
-
-    logSpy.mockRestore()
-
-    expect(logs).toContain("serena_runtime: PASS")
-    // Assert no raw source code or indexing internals are logged publicly
-    const publicLogText = logs.join("\n")
-    expect(publicLogText).not.toContain("index_symbols")
-    expect(publicLogText).not.toContain("ast_tokens")
+    expect(config.mcp.serena.command.filter((part: string) => part === "start-mcp-server")).toHaveLength(1)
+    expect(runLaneSource).not.toContain("SerenaRuntimeSupervisor")
+    expect(runLaneSource).not.toContain("start-mcp-server")
   })
 })

@@ -5,6 +5,7 @@ import os from "node:os"
 import { CapabilityRuntimeManager } from "../../harness/runtime/capability-runtime.js"
 import { prepareLane } from "../../harness/runtime/prepare-lane.js"
 import { execFileSync } from "node:child_process"
+import yaml from "yaml"
 
 describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
   let tempDir: string
@@ -23,7 +24,8 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
   })
 
   it("Test 1: builder-core generates Serena present, CodeGraph absent, edit allowed", () => {
-    const config = manager.generateOpenCodeConfig("builder-core", tempDir)
+    const serenaHomeDir = path.join(tempDir, "control", "serena-home")
+    const config = manager.generateOpenCodeConfig("builder-core", tempDir, { serenaHomeDir })
 
     // Serena must be present in MCP config
     expect(config.mcp?.serena).toBeDefined()
@@ -31,7 +33,9 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     expect(config.mcp?.serena.enabled).toBe(true)
     expect(Array.isArray(config.mcp?.serena.command)).toBe(true)
     expect(config.mcp?.serena.command).toContain(tempDir.replace(/\\/g, "/"))
-    expect(config.mcp?.serena.environment.SERENA_SHARED_MEMORY).toBe("false")
+    expect(config.mcp?.serena.environment).toEqual({
+      SERENA_HOME: serenaHomeDir.replace(/\\/g, "/")
+    })
     expect(config.mcp?.serena.env).toBeUndefined()
     expect(config.mcp?.serena.args).toBeUndefined()
 
@@ -57,7 +61,9 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
   })
 
   it("Test 3: reviewer-cross-system generates CodeGraph present, Serena present, edit denied", () => {
-    const config = manager.generateOpenCodeConfig("reviewer-cross-system", tempDir)
+    const config = manager.generateOpenCodeConfig("reviewer-cross-system", tempDir, {
+      serenaHomeDir: path.join(tempDir, "control", "serena-home")
+    })
 
     expect(config.mcp?.codegraph).toBeDefined()
     expect(config.mcp?.serena).toBeDefined()
@@ -65,14 +71,18 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
   })
 
   it("Test 4: security-reviewer generates CodeGraph present and edit denied", () => {
-    const config = manager.generateOpenCodeConfig("security-reviewer", tempDir)
+    const config = manager.generateOpenCodeConfig("security-reviewer", tempDir, {
+      serenaHomeDir: path.join(tempDir, "control", "serena-home")
+    })
 
     expect(config.mcp?.codegraph).toBeDefined()
     expect(config.permission?.edit).toBe("deny")
   })
 
   it("Test 5: ESLint LSP is truthfully wired for roles with native_lsp enabled", () => {
-    const config = manager.generateOpenCodeConfig("builder-core", tempDir)
+    const config = manager.generateOpenCodeConfig("builder-core", tempDir, {
+      serenaHomeDir: path.join(tempDir, "control", "serena-home")
+    })
 
     expect(config.lsp?.eslint).toBeDefined()
     expect(config.lsp?.eslint.command).toContain("vscode-eslint-language-server")
@@ -80,11 +90,13 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
   })
 
   it("Test 6: Context7 is wired when optional/enabled and absent when disabled", () => {
-    const builderConfig = manager.generateOpenCodeConfig("builder-core", tempDir)
+    const serenaHomeDir = path.join(tempDir, "control", "serena-home")
+    const builderConfig = manager.generateOpenCodeConfig("builder-core", tempDir, { serenaHomeDir })
     expect(builderConfig.mcp?.context7).toBeUndefined()
 
     const optionalConfig = manager.generateOpenCodeConfig("builder-core", tempDir, {
-      includeOptionalContext7: true
+      includeOptionalContext7: true,
+      serenaHomeDir
     })
     expect(optionalConfig.mcp?.context7).toMatchObject({
       type: "local",
@@ -104,7 +116,9 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
   })
 
   it("Test 8: reviewer CodeGraph uses valid local MCP shape", () => {
-    const config = manager.generateOpenCodeConfig("reviewer-cross-system", tempDir)
+    const config = manager.generateOpenCodeConfig("reviewer-cross-system", tempDir, {
+      serenaHomeDir: path.join(tempDir, "control", "serena-home")
+    })
 
     expect(config.mcp?.codegraph).toMatchObject({
       type: "local",
@@ -157,12 +171,25 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"))
     expect(config.plugin).toEqual(["./plugins/otonom-harness.ts"])
     expect(config.mcp.context7).toBeUndefined()
+    const serenaHomeDir = path.join(controlDir, "serena-home")
+    const serenaConfigPath = path.join(serenaHomeDir, "serena_config.yml")
+    expect(fs.existsSync(serenaConfigPath)).toBe(true)
+    expect(config.mcp.serena.environment).toEqual({
+      SERENA_HOME: serenaHomeDir.replace(/\\/g, "/")
+    })
+    const serenaConfig = yaml.parse(fs.readFileSync(serenaConfigPath, "utf-8"))
+    expect(serenaConfig.project_serena_folder_location).toBe(
+      `${path.join(controlDir, "serena-project-data").replace(/\\/g, "/")}/$projectFolderName/.serena`
+    )
+    expect(serenaConfig.gui_log_window).toBe(false)
+    expect(serenaConfig.web_dashboard).toBe(false)
+    expect(serenaConfig.web_dashboard_open_on_launch).toBe(false)
     const status = execFileSync("git", ["status", "--porcelain=v1", "-uall"], {
       cwd: repoDir,
       encoding: "utf-8"
     })
     expect(status).toBe("")
-  })
+  }, 90000)
 
   it("Test 10: config preflight detects invalid legacy MCP shape", () => {
     const repoDir = path.join(tempDir, "target")
@@ -201,5 +228,35 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
       ok: false,
       category: "MCP_CONFIG_ERROR"
     })
+  })
+
+  it("Test 11: capability workspace guard rejects target pollution", () => {
+    const repoDir = path.join(tempDir, "target")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "fixture\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "ignore" })
+
+    const baseline = (manager as any).captureWorkspaceStatus(repoDir)
+    fs.mkdirSync(path.join(repoDir, ".serena"), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, ".serena", ".gitignore"), "*\n")
+
+    expect(() => (manager as any).assertCapabilityWorkspaceClean(repoDir, baseline)).toThrow(
+      "CAPABILITY_WORKSPACE_POLLUTION"
+    )
+  })
+
+  it("Test 12: Phase-2 smoke owns exactly one markdown path", () => {
+    const smokeManifest = yaml.parse(
+      fs.readFileSync(path.resolve(process.cwd(), "config/lanes.phase2-smoke.yaml"), "utf-8")
+    )
+
+    expect(smokeManifest.tasks).toHaveLength(1)
+    expect(smokeManifest.tasks[0].allowed_write_paths).toEqual([
+      "docs/swarm-smoke/phase2-harness-validation.md"
+    ])
   })
 })

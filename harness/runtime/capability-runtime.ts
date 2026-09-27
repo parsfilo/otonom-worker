@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import { execFileSync, spawn } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import yaml from "yaml"
+import { sanitizeEnv } from "../policies/env-policy.js"
 
 export const SERENA_COMMIT = "949a27ef1e5fda1a6e7b561e777bcece345c6ffd"
 export const HARNESS_PLUGIN_NAME = "otonom-harness.ts"
@@ -13,6 +14,13 @@ export function opencodeArgs(args: string[]): string[] {
 export interface OpenCodeConfigOptions {
   includeOptionalContext7?: boolean
   pluginPath?: string
+  serenaHomeDir?: string
+}
+
+export interface SerenaRuntimePaths {
+  homeDir: string
+  configPath: string
+  projectDataDir: string
 }
 
 export interface RoleProfile {
@@ -70,6 +78,71 @@ export class CapabilityRuntimeManager {
     return profile
   }
 
+  public prepareSerenaHome(controlDir: string): SerenaRuntimePaths {
+    const homeDir = path.resolve(controlDir, "serena-home")
+    const configPath = path.join(homeDir, "serena_config.yml")
+    const projectDataDir = path.resolve(controlDir, "serena-project-data")
+    fs.mkdirSync(homeDir, { recursive: true })
+    fs.mkdirSync(projectDataDir, { recursive: true })
+
+    try {
+      execFileSync(
+        "uvx",
+        [
+          "--from",
+          `git+https://github.com/oraios/serena@${SERENA_COMMIT}`,
+          "serena",
+          "init"
+        ],
+        {
+          env: {
+            ...sanitizeEnv(process.env),
+            SERENA_HOME: homeDir
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 120000
+        }
+      )
+    } catch {
+      throw new Error("SERENA_CONFIG_INIT_FAILED")
+    }
+
+    if (!fs.existsSync(configPath)) {
+      throw new Error("SERENA_CONFIG_INIT_FAILED")
+    }
+
+    const config = yaml.parse(fs.readFileSync(configPath, "utf-8"))
+    if (!config || typeof config !== "object") {
+      throw new Error("SERENA_CONFIG_INIT_FAILED")
+    }
+    config.project_serena_folder_location =
+      `${projectDataDir.replace(/\\/g, "/")}/$projectFolderName/.serena`
+    config.gui_log_window = false
+    config.web_dashboard = false
+    config.web_dashboard_open_on_launch = false
+    fs.writeFileSync(configPath, yaml.stringify(config))
+
+    return { homeDir, configPath, projectDataDir }
+  }
+
+  public captureWorkspaceStatus(targetWorkspaceDir: string): string {
+    return execFileSync("git", ["status", "--porcelain=v1", "-uall", "--ignored"], {
+      cwd: targetWorkspaceDir,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"]
+    })
+  }
+
+  public assertCapabilityWorkspaceClean(
+    targetWorkspaceDir: string,
+    baseline: string
+  ): void {
+    const current = this.captureWorkspaceStatus(targetWorkspaceDir)
+    if (baseline !== "" || current !== baseline) {
+      throw new Error("CAPABILITY_WORKSPACE_POLLUTION")
+    }
+  }
+
   private localMcp(command: string[], environment: Record<string, string> = {}) {
     return {
       type: "local",
@@ -91,6 +164,9 @@ export class CapabilityRuntimeManager {
 
     // 1. Serena Wiring
     if (profile.serena) {
+      if (!options.serenaHomeDir) {
+        throw new Error("Serena capability requires a lane-local SERENA_HOME")
+      }
       mcp.serena = this.localMcp(
         [
           "uvx",
@@ -114,7 +190,7 @@ export class CapabilityRuntimeManager {
           "false"
         ],
         {
-          SERENA_SHARED_MEMORY: "false"
+          SERENA_HOME: path.resolve(options.serenaHomeDir).replace(/\\/g, "/")
         }
       )
     }
@@ -274,7 +350,7 @@ export class CapabilityRuntimeManager {
       execFileSync(OPENCODE_COMMAND, opencodeArgs(["debug", "config", "--pure"]), {
         cwd: input.targetWorkspaceDir,
         env: {
-          ...process.env,
+          ...sanitizeEnv(process.env),
           OPENCODE_CONFIG: input.configPath,
           OPENCODE_CONFIG_DIR: input.configDir
         },
@@ -285,89 +361,5 @@ export class CapabilityRuntimeManager {
     } catch (err: any) {
       return { ok: false, category: "CONFIG_INVALID", message: err.message }
     }
-  }
-}
-
-export interface SerenaSupervisorOptions {
-  workspaceDir: string
-  targetSha: string
-  mockProcess?: boolean
-}
-
-export interface SerenaHandle {
-  running: boolean
-  pid?: number
-}
-
-export class SerenaRuntimeSupervisor {
-  private handle: SerenaHandle = { running: false }
-  private childProcess?: any
-
-  constructor(private options: SerenaSupervisorOptions) {}
-
-  public async start(): Promise<SerenaHandle> {
-    if (!fs.existsSync(this.options.workspaceDir)) {
-      throw new Error(`Workspace directory does not exist for Serena: ${this.options.workspaceDir}`)
-    }
-
-    if (this.options.mockProcess) {
-      this.handle = { running: true, pid: 12345 }
-      console.log("serena_runtime: PASS")
-      return this.handle
-    }
-
-    try {
-      this.childProcess = spawn(
-        "uvx",
-        [
-          "--from",
-          `git+https://github.com/oraios/serena@${SERENA_COMMIT}`,
-          "serena",
-          "start-mcp-server",
-          "--project",
-          this.options.workspaceDir,
-          "--context",
-          "ide-assistant",
-          "--mode",
-          "editing",
-          "--transport",
-          "stdio",
-          "--enable-web-dashboard",
-          "false",
-          "--enable-gui-log-window",
-          "false",
-          "--open-web-dashboard",
-          "false"
-        ],
-        {
-          stdio: ["ignore", "pipe", "pipe"],
-          env: {
-            ...process.env,
-            SERENA_SHARED_MEMORY: "false"
-          }
-        }
-      )
-
-      this.handle = {
-        running: true,
-        pid: this.childProcess.pid
-      }
-
-      console.log("serena_runtime: PASS")
-      return this.handle
-    } catch (err: any) {
-      console.error(`[Serena Error] Failed to start Serena: ${err.message}`)
-      this.handle = { running: false }
-      throw err
-    }
-  }
-
-  public async stop(): Promise<void> {
-    if (this.childProcess && !this.childProcess.killed) {
-      try {
-        this.childProcess.kill("SIGTERM")
-      } catch {}
-    }
-    this.handle.running = false
   }
 }

@@ -260,4 +260,22 @@ describe("Authoritative Git Change Detection in Finalizer", () => {
     fs.appendFileSync(path.join(repoDir, "src", "allowed.ts"), "// real edit\n")
     expect(detector.detectChanges().actualChangedPaths).toEqual(["src/allowed.ts"])
   })
+
+  it("Scenario 10: Serena metadata in target remains an ownership violation", async () => {
+    fs.mkdirSync(path.join(repoDir, ".serena"), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, ".serena", ".gitignore"), "*\n")
+
+    const taskPath = createTaskManifest(["src/**"])
+    const resultPath = createResultManifest([".serena/.gitignore"])
+    const finalizer = new Finalizer({
+      taskPath,
+      resultPath,
+      workspaceRoot: repoDir,
+      dryRun: true
+    })
+
+    const report = await finalizer.execute()
+    expect(report.success).toBe(false)
+    expect(report.error).toMatch(/(\.serena\/\.gitignore|Ownership violation)/i)
+  })
 })

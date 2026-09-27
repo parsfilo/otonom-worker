@@ -55,6 +55,18 @@ export class ModelExecutor {
     const attempts: ModelExecutionAttempt[] = []
     const attemptedModels: string[] = []
 
+    if (this.workspaceDir) {
+      const workspaceStatus = new CapabilityRuntimeManager().captureWorkspaceStatus(this.workspaceDir)
+      if (workspaceStatus !== "") {
+        return {
+          success: false,
+          status: "FAIL",
+          attempts,
+          error: "CAPABILITY_WORKSPACE_POLLUTION"
+        }
+      }
+    }
+
     for (let i = 0; i < this.maxAttempts; i++) {
       const model = this.selector.getFallbackModel(role, attemptedModels)
       if (!model) {

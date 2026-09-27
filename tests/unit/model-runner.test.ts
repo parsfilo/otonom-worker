@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
+import { execFileSync } from "node:child_process"
 import { ModelSelector } from "../../harness/runtime/model-selector.js"
 import { ModelExecutor } from "../../harness/runtime/model-executor.js"
 
@@ -227,5 +228,39 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     expect(result.status).toBe("FAIL")
     // Deterministic failure must NOT retry across different models
     expect(calls).toBe(1)
+  })
+
+  it("Test 7: capability workspace pollution blocks model execution", async () => {
+    const repoDir = path.join(tempDir, "target")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "fixture\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "ignore" })
+    fs.mkdirSync(path.join(repoDir, ".serena"), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, ".serena", ".gitignore"), "*\n")
+
+    let calls = 0
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      runnerFactory: () => ({
+        run: async () => {
+          calls++
+          throw new Error("runner must not start")
+        }
+      }),
+      maxAttempts: 1
+    })
+
+    const result = await executor.executeLane("lane-polluted", "builder-core")
+    expect(result).toMatchObject({
+      success: false,
+      status: "FAIL",
+      error: "CAPABILITY_WORKSPACE_POLLUTION"
+    })
+    expect(calls).toBe(0)
   })
 })

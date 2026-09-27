@@ -45,6 +45,45 @@ describe("Verification Runner & Completion Gate", () => {
     expect(result.passed).toBe(false)
   })
 
+  it("does not pass trusted credentials to project verification commands", async () => {
+    const capturePath = path.join(tempDir, "verification-env.json")
+    const names = [
+      "DOPPLER_TOKEN",
+      "OTONOM_SOURCE_CLONE_TOKEN",
+      "OTONOM_TARGET_WRITE_TOKEN",
+      "VERIFICATION_ENV_CAPTURE"
+    ] as const
+    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]))
+    const expectedPath = process.env.PATH
+
+    process.env.DOPPLER_TOKEN = "fake-doppler-token"
+    process.env.OTONOM_SOURCE_CLONE_TOKEN = "fake-source-token"
+    process.env.OTONOM_TARGET_WRITE_TOKEN = "fake-write-token"
+    process.env.VERIFICATION_ENV_CAPTURE = capturePath
+
+    try {
+      const runner = new VerificationRunner({
+        cwd: tempDir,
+        customProfiles: {
+          capture:
+            `node -e "require('node:fs').writeFileSync(process.env.VERIFICATION_ENV_CAPTURE, JSON.stringify({ doppler: process.env.DOPPLER_TOKEN, source: process.env.OTONOM_SOURCE_CLONE_TOKEN, write: process.env.OTONOM_TARGET_WRITE_TOKEN, path: process.env.PATH }))"`
+        }
+      })
+
+      const result = await runner.runProfile("capture")
+      expect(result.passed).toBe(true)
+      expect(JSON.parse(fs.readFileSync(capturePath, "utf-8"))).toEqual({
+        path: expectedPath
+      })
+    } finally {
+      for (const name of names) {
+        const value = previous[name]
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+    }
+  })
+
   it("rejects arbitrary or unknown verification profile", async () => {
     const runner = new VerificationRunner()
     await expect(runner.runProfile("unknown-profile" as any)).rejects.toThrow(/Unknown verification profile/)

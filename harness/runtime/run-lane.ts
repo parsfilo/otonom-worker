@@ -2,7 +2,6 @@ import fs from "node:fs"
 import path from "node:path"
 import { ModelExecutor } from "./model-executor.js"
 import { ModelSelector } from "./model-selector.js"
-import { CapabilityRuntimeManager, SerenaRuntimeSupervisor } from "./capability-runtime.js"
 import { GitChangeDetector } from "../finalizer/git-detector.js"
 
 export async function runLane(
@@ -29,24 +28,7 @@ export async function runLane(
     "PRIVATE_LOG_SENTINEL_PHASE2\n"
   )
 
-  // 2. Supervise Serena if role capability profile requires it
-  const capabilityManager = new CapabilityRuntimeManager()
-  const profile = capabilityManager.getProfile(role)
-  let serenaSupervisor: SerenaRuntimeSupervisor | undefined
-
-  if (profile.serena) {
-    serenaSupervisor = new SerenaRuntimeSupervisor({
-      workspaceDir: targetWorkspaceDir,
-      targetSha: task.base_sha || "HEAD"
-    })
-    try {
-      await serenaSupervisor.start()
-    } catch (serenaErr: any) {
-      console.error(`[Run Lane Warning] Serena runtime failed to start: ${serenaErr.message}`)
-    }
-  }
-
-  // 3. Construct specific bounded task prompt without credentials
+  // 2. Construct specific bounded task prompt without credentials
   const promptLines = [
     `Task ID: ${laneId}`,
     `Objectives:`,
@@ -60,25 +42,18 @@ export async function runLane(
   ]
   const prompt = promptLines.join("\n")
 
-  let execResult: any
-  try {
-    const selector = new ModelSelector({ autoDiscover: true })
-    const opencodeConfigDir = path.join(controlDir, "opencode")
-    const executor = new ModelExecutor({
-      selector,
-      privateDir,
-      workspaceDir: targetWorkspaceDir,
-      opencodeConfigPath: path.join(opencodeConfigDir, "opencode.json"),
-      opencodeConfigDir,
-      maxAttempts: 3
-    })
+  const selector = new ModelSelector({ autoDiscover: true })
+  const opencodeConfigDir = path.join(controlDir, "opencode")
+  const executor = new ModelExecutor({
+    selector,
+    privateDir,
+    workspaceDir: targetWorkspaceDir,
+    opencodeConfigPath: path.join(opencodeConfigDir, "opencode.json"),
+    opencodeConfigDir,
+    maxAttempts: 3
+  })
 
-    execResult = await executor.executeLane(laneId, role, prompt)
-  } finally {
-    if (serenaSupervisor) {
-      await serenaSupervisor.stop()
-    }
-  }
+  const execResult = await executor.executeLane(laneId, role, prompt)
 
   // Ensure result.json exists in controlDir for the finalizer
   const resultPath = path.join(controlDir, "result.json")

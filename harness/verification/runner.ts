@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process"
+import { sanitizeEnv } from "../policies/env-policy.js"
 
 export type VerificationProfile = "targeted" | "lane" | "full" | "review-only" | string
 
@@ -57,7 +58,7 @@ export class VerificationRunner {
     const proc = spawnSync(shell, shellArgs, {
       cwd: this.cwd,
       env: {
-        ...process.env,
+        ...sanitizeEnv(process.env),
         CI: "1",
         NO_COLOR: "1"
       },

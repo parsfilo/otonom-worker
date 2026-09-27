@@ -19,6 +19,9 @@ export function prepareLane(
     throw new Error(`Task with ID '${laneId}' not found in manifest: ${manifestPath}`)
   }
 
+  const capabilityManager = new CapabilityRuntimeManager()
+  const baseline = capabilityManager.captureWorkspaceStatus(targetWorkspace)
+
   // 1. Write task.json strictly in controlDir (outside target repo)
   fs.mkdirSync(controlDir, { recursive: true })
   const taskFilePath = path.join(controlDir, "task.json")
@@ -26,11 +29,20 @@ export function prepareLane(
   console.log(`[Prepare Lane] Wrote lane contract to: ${taskFilePath}`)
 
   // 2. Generate role-based OpenCode & MCP configuration outside target Git
-  const capabilityManager = new CapabilityRuntimeManager()
   const opencodeConfigDir = path.join(controlDir, "opencode")
   const opencodeConfigPath = path.join(opencodeConfigDir, "opencode.json")
+  const profile = capabilityManager.getProfile((currentTask as any).role)
+  const serenaRuntime = profile.serena
+    ? capabilityManager.prepareSerenaHome(controlDir)
+    : undefined
   const pluginPath = capabilityManager.copyHarnessPlugin(opencodeConfigDir)
-  capabilityManager.writeLaneConfig((currentTask as any).role, targetWorkspace, opencodeConfigPath)
+  capabilityManager.writeLaneConfig(
+    (currentTask as any).role,
+    targetWorkspace,
+    opencodeConfigPath,
+    { serenaHomeDir: serenaRuntime?.homeDir }
+  )
+  capabilityManager.assertCapabilityWorkspaceClean(targetWorkspace, baseline)
   console.log(`[Prepare Lane] Configured role capabilities (${(currentTask as any).role}) at: ${opencodeConfigPath}`)
   console.log(`[Prepare Lane] Copied harness plugin to: ${pluginPath}`)
 }
