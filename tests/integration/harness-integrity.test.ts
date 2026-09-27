@@ -131,5 +131,82 @@ NhAAAAAwEAAQAAAYEA0123456789abcdefghijklmnopqrstuvwxyz
       // Ensure no opencode agent invocation in harness CI
       expect(content).not.toContain("opencode run")
     })
+
+    it("validates that all external GitHub actions are pinned to full 40-character commit SHAs", () => {
+      const workflowsDir = path.join(rootDir, ".github/workflows")
+      const workflowFiles = fs.readdirSync(workflowsDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+
+      const mutableActionRegex = /uses:\s+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+(?:[^\s@]*)?)@([^\s#]+)/g
+
+      for (const file of workflowFiles) {
+        const filePath = path.join(workflowsDir, file)
+        const content = fs.readFileSync(filePath, "utf-8")
+
+        let match: RegExpExecArray | null
+        while ((match = mutableActionRegex.exec(content)) !== null) {
+          const actionName = match[1]
+          const ref = match[2]
+
+          // Ignore local actions
+          if (actionName.startsWith(".") || actionName.startsWith("./")) continue
+
+          // Must be exactly 40 lowercase hex characters
+          const isFullSha = /^[0-9a-f]{40}$/.test(ref)
+          expect(
+            isFullSha,
+            `Workflow '${file}' uses unpinned external action: '${actionName}@${ref}'. Must use full 40-character commit SHA.`
+          ).toBe(true)
+        }
+      }
+    })
+
+    it("verifies CI detector catches mutable action tags", () => {
+      const fixtureWorkflow = `
+name: Bad Workflow
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@main
+`
+      const mutableActionRegex = /uses:\s+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+(?:[^\s@]*)?)@([^\s#]+)/g
+      const unpinned: string[] = []
+      let match: RegExpExecArray | null
+      while ((match = mutableActionRegex.exec(fixtureWorkflow)) !== null) {
+        if (!/^[0-9a-f]{40}$/.test(match[2])) {
+          unpinned.push(`${match[1]}@${match[2]}`)
+        }
+      }
+      expect(unpinned).toEqual(["actions/checkout@v4", "actions/setup-node@main"])
+    })
+
+    it("validates workflows do not contain unsafe shell/JS source interpolation", () => {
+      const workflowsDir = path.join(rootDir, ".github/workflows")
+      const workflowFiles = fs.readdirSync(workflowsDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+
+      for (const file of workflowFiles) {
+        const filePath = path.join(workflowsDir, file)
+        const content = fs.readFileSync(filePath, "utf-8")
+
+        // Disallow tsx -e or node -e embedding github.event.inputs expressions directly
+        expect(content).not.toMatch(/tsx\s+-e\s+["'][^"']*\$\{\{\s*github\.event\.inputs/i)
+        expect(content).not.toMatch(/node\s+-e\s+["'][^"']*\$\{\{\s*github\.event\.inputs/i)
+      }
+    })
+
+    it("verifies excluded orchestration skills remain excluded", () => {
+      const excludedSkills = [
+        "using-git-worktrees",
+        "dispatching-parallel-agents",
+        "subagent-driven-development",
+        "finishing-a-development-branch"
+      ]
+
+      for (const skill of excludedSkills) {
+        const skillPath = path.join(rootDir, ".agents/skills", skill)
+        expect(fs.existsSync(skillPath), `Excluded skill '${skill}' must not be present in worker harness`).toBe(false)
+      }
+    })
   })
 })

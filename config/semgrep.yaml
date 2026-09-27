@@ -1,0 +1,29 @@
+rules:
+  - id: avoid-eval-and-function-constructor
+    patterns:
+      - pattern-either:
+          - pattern: "eval(...)"
+          - pattern: "new Function(...)"
+    message: "Avoid dynamic code execution via eval or Function constructor."
+    languages: [typescript, javascript]
+    severity: ERROR
+
+  - id: avoid-hardcoded-github-tokens
+    patterns:
+      - pattern-regex: 'gh[pousr]_[A-Za-z0-9_]{20,}'
+    paths:
+      exclude:
+        - "**/tests/**"
+        - "**/config/toolchain.lock.json"
+    message: "Hardcoded GitHub token pattern detected in source code."
+    languages: [generic]
+    severity: ERROR
+
+  - id: avoid-child-process-shell-true
+    patterns:
+      - pattern-either:
+          - pattern: "spawn(..., {shell: true, ...})"
+          - pattern: "spawnSync(..., {shell: true, ...})"
+    message: "Executing child processes with shell: true invites command injection vulnerabilities."
+    languages: [typescript, javascript]
+    severity: ERROR

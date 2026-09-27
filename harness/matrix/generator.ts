@@ -100,9 +100,34 @@ export function generateMatrix(input: MatrixGenerationInput): MatrixOutput {
   }
 }
 
-export function loadManifestFile(manifestPath: string): unknown[] {
-  const content = fs.readFileSync(path.resolve(manifestPath), "utf-8")
-  if (manifestPath.endsWith(".json")) {
+export function loadManifestFile(manifestPath: string, rootDir: string = process.cwd()): unknown[] {
+  if (!manifestPath || typeof manifestPath !== "string") {
+    throw new Error("Invalid manifest path: path must be a non-empty string")
+  }
+
+  // Enforce approved extensions
+  const ext = path.extname(manifestPath).toLowerCase()
+  if (![".yaml", ".yml", ".json"].includes(ext)) {
+    throw new Error(`Invalid manifest extension: '${ext}'. Only .yaml, .yml, and .json are permitted.`)
+  }
+
+  // Check for path traversal attempts
+  const normalized = manifestPath.replace(/\\/g, "/")
+  if (normalized.includes("\0") || normalized.split("/").includes("..")) {
+    throw new Error(`Path traversal detected in manifest path: ${manifestPath}`)
+  }
+
+  const resolved = path.resolve(rootDir, manifestPath)
+  if (!resolved.startsWith(path.resolve(rootDir))) {
+    throw new Error(`Manifest path escapes approved directory: ${manifestPath}`)
+  }
+
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Manifest file does not exist: ${resolved}`)
+  }
+
+  const content = fs.readFileSync(resolved, "utf-8")
+  if (ext === ".json") {
     const parsed = JSON.parse(content)
     return Array.isArray(parsed) ? parsed : parsed.tasks || [parsed]
   } else {

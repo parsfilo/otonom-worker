@@ -1,8 +1,12 @@
 import fs from "node:fs"
 import path from "node:path"
+import { execFileSync } from "node:child_process"
 import { validateTask, validateResult } from "../validation/schema-validator.js"
 import { OwnershipTracker } from "../policies/ownership.js"
 import { containsSensitiveData } from "../logging/sanitizer.js"
+import { GitChangeDetector } from "./git-detector.js"
+
+import { VerificationRunner, VerificationResult } from "../verification/runner.js"
 
 export interface FinalizerConfig {
   taskPath: string
@@ -11,6 +15,10 @@ export interface FinalizerConfig {
   dryRun?: boolean
   workflowRunId?: string
   targetToken?: string
+  targetRemote?: string
+  customVerificationProfiles?: Record<string, string>
+  verificationTimeoutMs?: number
+  reportOutputPath?: string
 }
 
 export interface FinalizerReport {
@@ -21,6 +29,8 @@ export interface FinalizerReport {
   error?: string
   commitSha?: string
   prUrl?: string
+  trustedVerification?: VerificationResult
+  authoritativeChangedPaths?: string[]
 }
 
 export class Finalizer {
@@ -108,13 +118,41 @@ export class Finalizer {
       }
     }
 
-    // 2. Enforce Ownership
+    // 2. Authoritative Git Change Detection & Reconciliation
+    const gitDetector = new GitChangeDetector({
+      workspaceRoot: this.workspaceRoot,
+      baseSha: this.task.base_sha
+    })
+
+    const reconciliation = gitDetector.reconcileWithReported(this.result.changed_paths)
+    if (!reconciliation.valid) {
+      return {
+        success: false,
+        dryRun: this.dryRun,
+        pushed: false,
+        branchName,
+        error: reconciliation.error
+      }
+    }
+
+    const changeSummary = gitDetector.detectChanges()
+    const allPathsToVerifyOwnership = new Set([
+      ...changeSummary.actualChangedPaths,
+      ...this.result.changed_paths
+    ])
+    // Also include old paths from renames
+    for (const pair of changeSummary.renamePairs) {
+      allPathsToVerifyOwnership.add(pair.oldPath)
+      allPathsToVerifyOwnership.add(pair.newPath)
+    }
+
+    // 3. Enforce Ownership on Authoritative Git Paths
     const tracker = new OwnershipTracker({
       allowedWritePaths: this.task.allowed_write_paths,
       forbiddenWritePaths: this.task.forbidden_write_paths || []
     })
 
-    for (const changedPath of this.result.changed_paths) {
+    for (const changedPath of allPathsToVerifyOwnership) {
       const check = tracker.recordEdit(changedPath)
       if (!check.allowed) {
         return {
@@ -127,8 +165,8 @@ export class Finalizer {
       }
     }
 
-    // 3. Secret Scan check on changed path list and summaries
-    for (const p of this.result.changed_paths) {
+    // 4. Secret Scan check on authoritative paths
+    for (const p of allPathsToVerifyOwnership) {
       if (containsSensitiveData(p)) {
         return {
           success: false,
@@ -140,45 +178,209 @@ export class Finalizer {
       }
     }
 
-    // 4. Verify Mechanical Evidence
-    const hasPassingVerification = this.result.verification_results.some((v: any) => v.passed && v.exit_code === 0)
-    if (!hasPassingVerification) {
-      return {
+    // 5. Trusted Independent Verification Execution
+    const profileName = this.task.verification_profile || "lane"
+    const verifier = new VerificationRunner({
+      cwd: this.workspaceRoot,
+      customProfiles: this.config.customVerificationProfiles,
+      timeoutMs: this.config.verificationTimeoutMs
+    })
+
+    let trustedVerification: VerificationResult
+    try {
+      trustedVerification = await verifier.runProfile(profileName, this.config.verificationTimeoutMs)
+    } catch (err: any) {
+      const failedReport: FinalizerReport = {
         success: false,
         dryRun: this.dryRun,
         pushed: false,
         branchName,
-        error: "No successful verification result recorded in result.json"
+        error: `Independent verification execution failed: ${err.message}`,
+        authoritativeChangedPaths: changeSummary.actualChangedPaths
       }
+      this.writeReport(failedReport)
+      return failedReport
     }
 
-    // 5. In Dry Run Mode: complete without git push / PR
+    if (!trustedVerification.passed || trustedVerification.exit_code !== 0) {
+      const failedReport: FinalizerReport = {
+        success: false,
+        dryRun: this.dryRun,
+        pushed: false,
+        branchName,
+        error: `Independent verification failed for profile '${profileName}': exit code ${trustedVerification.exit_code}`,
+        trustedVerification,
+        authoritativeChangedPaths: changeSummary.actualChangedPaths
+      }
+      this.writeReport(failedReport)
+      return failedReport
+    }
+
+    // 6. In Dry Run Mode: complete without git push / PR
     if (this.dryRun) {
-      return {
+      const successReport: FinalizerReport = {
         success: true,
         dryRun: true,
         pushed: false,
-        branchName
+        branchName,
+        trustedVerification,
+        authoritativeChangedPaths: changeSummary.actualChangedPaths
       }
+      this.writeReport(successReport)
+      return successReport
     }
 
-    // 6. In Real Mode: Write token is introduced strictly here
+    // 7. In Real Mode: Write token is introduced strictly here
     if (!this.targetToken) {
-      return {
+      const tokenReport: FinalizerReport = {
         success: false,
         dryRun: false,
         pushed: false,
         branchName,
-        error: "Target repository write credentials not configured for finalizer push"
+        error: "Target repository write credentials not configured for finalizer push",
+        trustedVerification,
+        authoritativeChangedPaths: changeSummary.actualChangedPaths
       }
+      this.writeReport(tokenReport)
+      return tokenReport
     }
 
-    // Target push and PR creation would happen here in Phase 2
-    return {
+    // Defensive check: NEVER push to protected main or master branches
+    this.validatePushBranch(branchName)
+
+    // Verify task base SHA exists in repository history
+    try {
+      execFileSync("git", ["cat-file", "-e", `${this.task.base_sha}^{commit}`], {
+        cwd: this.workspaceRoot,
+        stdio: "ignore"
+      })
+    } catch {
+      const shaReport: FinalizerReport = {
+        success: false,
+        dryRun: false,
+        pushed: false,
+        branchName,
+        error: `Base SHA mismatch: commit ${this.task.base_sha} does not exist in workspace history`,
+        trustedVerification,
+        authoritativeChangedPaths: changeSummary.actualChangedPaths
+      }
+      this.writeReport(shaReport)
+      return shaReport
+    }
+
+    // Stage ONLY actual validated changed paths (core.hooksPath=/dev/null ensures hooks are bypassed)
+    for (const p of changeSummary.actualChangedPaths) {
+      execFileSync("git", ["-c", "core.hooksPath=/dev/null", "add", p], {
+        cwd: this.workspaceRoot,
+        stdio: "ignore"
+      })
+    }
+
+    // Commit changes safely if index is modified
+    const diffCached = execFileSync("git", ["diff", "--cached", "--name-only"], {
+      cwd: this.workspaceRoot,
+      encoding: "utf-8"
+    }).trim()
+
+    if (diffCached.length > 0) {
+      execFileSync(
+        "git",
+        [
+          "-c", "core.hooksPath=/dev/null",
+          "-c", "user.name=OTONOM Swarm Worker",
+          "-c", "user.email=worker@otonom.internal",
+          "commit",
+          "-m", `swarm(${this.task.id}): automated lane completion`
+        ],
+        {
+          cwd: this.workspaceRoot,
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: "0"
+          },
+          stdio: "ignore"
+        }
+      )
+    }
+
+    const commitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: this.workspaceRoot,
+      encoding: "utf-8"
+    }).trim()
+
+    // Push to target remote without --force, bypassing hooks and without leaking tokens to git config
+    const targetRemote = this.config.targetRemote || "origin"
+    try {
+      execFileSync(
+        "git",
+        [
+          "-c", "core.hooksPath=/dev/null",
+          "-c", "credential.helper=",
+          "push",
+          targetRemote,
+          `HEAD:refs/heads/${branchName}`
+        ],
+        {
+          cwd: this.workspaceRoot,
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: "0",
+            GIT_ASKPASS: ""
+          },
+          stdio: "ignore"
+        }
+      )
+    } catch (pushErr: any) {
+      const pushFailedReport: FinalizerReport = {
+        success: false,
+        dryRun: false,
+        pushed: false,
+        branchName,
+        commitSha,
+        error: `Git push failed: ${pushErr.message}`,
+        trustedVerification,
+        authoritativeChangedPaths: changeSummary.actualChangedPaths
+      }
+      this.writeReport(pushFailedReport)
+      return pushFailedReport
+    }
+
+    const realReport: FinalizerReport = {
       success: true,
       dryRun: false,
       pushed: true,
-      branchName
+      branchName,
+      commitSha,
+      trustedVerification,
+      authoritativeChangedPaths: changeSummary.actualChangedPaths
+    }
+    this.writeReport(realReport)
+    return realReport
+  }
+
+  public validatePushBranch(branchName: string): void {
+    const normalized = branchName.trim().toLowerCase()
+    if (
+      normalized === "main" ||
+      normalized === "master" ||
+      normalized === "refs/heads/main" ||
+      normalized === "refs/heads/master" ||
+      normalized.endsWith("/main") ||
+      normalized.endsWith("/master")
+    ) {
+      throw new Error(`Security violation: Refusing to push to protected main/master branch: '${branchName}'`)
+    }
+  }
+
+  private writeReport(report: FinalizerReport) {
+    if (this.config.reportOutputPath) {
+      try {
+        const outDir = path.dirname(this.config.reportOutputPath)
+        fs.mkdirSync(outDir, { recursive: true })
+        fs.writeFileSync(this.config.reportOutputPath, JSON.stringify(report, null, 2))
+      } catch {
+        // Log/ignore report write error
+      }
     }
   }
 }

@@ -4,6 +4,7 @@ async function main() {
   const taskPath = process.argv[2] || process.env.TASK_PATH || "task.json"
   const resultPath = process.argv[3] || process.env.RESULT_PATH || "result.json"
   const workspaceRoot = process.argv[4] || process.cwd()
+  const reportOutputPath = process.argv[5] || process.env.REPORT_PATH
   const dryRun = process.env.DRY_RUN !== "false"
   const workflowRunId = process.env.GITHUB_RUN_ID || "local-test"
   const targetToken = process.env.TARGET_WRITE_TOKEN
@@ -21,7 +22,8 @@ async function main() {
       workspaceRoot,
       dryRun,
       workflowRunId,
-      targetToken
+      targetToken,
+      reportOutputPath
     })
 
     const report = await finalizer.execute()

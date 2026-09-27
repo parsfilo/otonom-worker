@@ -15,6 +15,7 @@ export interface VerificationResult {
 export interface VerificationRunnerOptions {
   customProfiles?: Record<string, string>
   cwd?: string
+  timeoutMs?: number
 }
 
 const DEFAULT_PROFILES: Record<string, string> = {
@@ -27,19 +28,25 @@ const DEFAULT_PROFILES: Record<string, string> = {
 export class VerificationRunner {
   private profiles: Record<string, string>
   private cwd: string
+  private defaultTimeoutMs?: number
 
   constructor(options: VerificationRunnerOptions = {}) {
     this.profiles = { ...DEFAULT_PROFILES, ...(options.customProfiles || {}) }
     this.cwd = options.cwd || process.cwd()
+    this.defaultTimeoutMs = options.timeoutMs
   }
 
-  public async runProfile(profileName: VerificationProfile): Promise<VerificationResult> {
+  public async runProfile(
+    profileName: VerificationProfile,
+    timeoutMs?: number
+  ): Promise<VerificationResult> {
     const command = this.profiles[profileName]
     if (!command) {
       throw new Error(`Unknown verification profile: '${profileName}'. Allowed profiles: ${Object.keys(this.profiles).join(", ")}`)
     }
 
     const start = Date.now()
+    const effectiveTimeout = timeoutMs ?? this.defaultTimeoutMs
 
     // Execute through shell safely using Node spawnSync
     const isWindows = process.platform === "win32"
@@ -54,12 +61,19 @@ export class VerificationRunner {
         NO_COLOR: "1"
       },
       encoding: "utf-8",
-      maxBuffer: 10 * 1024 * 1024
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: effectiveTimeout
     })
 
     const duration = Date.now() - start
-    const exitCode = proc.status ?? (proc.error ? 1 : 0)
-    const passed = exitCode === 0
+    const isTimeout = (proc.error as any)?.code === "ETIMEDOUT"
+    const exitCode = isTimeout ? 124 : (proc.status ?? (proc.error ? 1 : 0))
+    const passed = !isTimeout && exitCode === 0
+
+    let summary = passed ? "Verification PASSED" : `Verification FAILED with exit code ${exitCode}`
+    if (isTimeout) {
+      summary = `Verification TIMED OUT after ${effectiveTimeout}ms`
+    }
 
     return {
       profile: profileName,
@@ -67,7 +81,7 @@ export class VerificationRunner {
       exit_code: exitCode,
       passed,
       duration_ms: duration,
-      sanitized_summary: passed ? "Verification PASSED" : `Verification FAILED with exit code ${exitCode}`
+      sanitized_summary: summary
     }
   }
 }

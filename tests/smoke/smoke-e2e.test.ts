@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
+import { execFileSync } from "node:child_process"
 import { RunVerificationTool } from "../../.opencode/tools/run-verification.js"
 import { CompleteLaneTool } from "../../.opencode/tools/complete-lane.js"
 import { Finalizer } from "../../harness/finalizer/finalizer.js"
@@ -19,6 +20,17 @@ describe("End-to-End Harness Smoke Test", () => {
     fs.mkdirSync(privateDir, { recursive: true })
     fs.mkdirSync(path.join(fixtureDir, "src"), { recursive: true })
     fs.mkdirSync(path.join(fixtureDir, "tests"), { recursive: true })
+
+    // Initialize git repository
+    execFileSync("git", ["init"], { cwd: fixtureDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: fixtureDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: fixtureDir, stdio: "ignore" })
+
+    // Initial base commit
+    fs.writeFileSync(path.join(fixtureDir, "README.md"), "# Smoke Test Fixture\n")
+    execFileSync("git", ["add", "."], { cwd: fixtureDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial base commit"], { cwd: fixtureDir, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixtureDir, encoding: "utf-8" }).trim()
 
     // Create fixture source and test
     fs.writeFileSync(
@@ -41,7 +53,7 @@ console.log("SMOKE TEST PASSED");`
       role: "builder-core",
       source_repository: "oaslananka/otonom",
       base_ref: "main",
-      base_sha: "0123456789abcdef0123456789abcdef01234567",
+      base_sha: baseSha,
       objectives: ["Add add(a, b) function", "Verify test passes"],
       allowed_write_paths: ["src/math.js", "tests/math.test.mjs"],
       acceptance_criteria: ["Math unit test exits with code 0"],
@@ -109,7 +121,10 @@ console.log("SMOKE TEST PASSED");`
       resultPath: completionResult.resultPath!,
       workspaceRoot: fixtureDir,
       dryRun: true,
-      workflowRunId: "smoke-run-42"
+      workflowRunId: "smoke-run-42",
+      customVerificationProfiles: {
+        lane: "node tests/math.test.mjs"
+      }
     })
 
     const report = await finalizer.execute()

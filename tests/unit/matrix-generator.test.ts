@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { generateMatrix, MatrixGenerationInput } from "../../harness/matrix/generator.js"
+import { generateMatrix, MatrixGenerationInput, loadManifestFile } from "../../harness/matrix/generator.js"
 
 describe("Matrix Generator", () => {
   const validTasks = [
@@ -95,5 +95,24 @@ describe("Matrix Generator", () => {
         maxParallel: 5
       })
     ).toThrow(/Task schema validation failed/)
+  })
+
+  it("loadManifestFile rejects path traversal attempts", () => {
+    expect(() => loadManifestFile("../../secret.yaml")).toThrow(/Path traversal|outside approved directory/i)
+    expect(() => loadManifestFile("config/../../secret.yaml")).toThrow(/Path traversal|outside approved directory/i)
+  })
+
+  it("loadManifestFile rejects disallowed file extensions", () => {
+    expect(() => loadManifestFile("scripts/run.sh")).toThrow(/Invalid manifest extension/i)
+  })
+
+  it("handles adversarial laneFilter as pure data without injection", () => {
+    expect(() => {
+      generateMatrix({
+        tasks: validTasks,
+        maxParallel: 5,
+        laneFilter: "'; rm -rf /; echo '"
+      })
+    }).toThrow(/No tasks matched filter/i)
   })
 })
