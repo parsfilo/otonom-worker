@@ -63,10 +63,13 @@ export async function runLane(
   let execResult: any
   try {
     const selector = new ModelSelector({ autoDiscover: true })
+    const opencodeConfigDir = path.join(controlDir, "opencode")
     const executor = new ModelExecutor({
       selector,
       privateDir,
       workspaceDir: targetWorkspaceDir,
+      opencodeConfigPath: path.join(opencodeConfigDir, "opencode.json"),
+      opencodeConfigDir,
       maxAttempts: 3
     })
 

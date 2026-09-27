@@ -1,5 +1,6 @@
 import { ModelSelector } from "./model-selector.js"
 import { AgentRunner, AgentRunResult, AgentExecutionStatus } from "./agent-runner.js"
+import { CapabilityRuntimeManager, OPENCODE_COMMAND, opencodeArgs } from "./capability-runtime.js"
 import path from "node:path"
 
 export interface ModelExecutorOptions {
@@ -8,6 +9,8 @@ export interface ModelExecutorOptions {
   maxAttempts?: number
   privateDir?: string
   workspaceDir?: string
+  opencodeConfigPath?: string
+  opencodeConfigDir?: string
 }
 
 export interface ModelExecutionAttempt {
@@ -31,6 +34,8 @@ export class ModelExecutor {
   private maxAttempts: number
   private privateDir: string
   private workspaceDir?: string
+  private opencodeConfigPath?: string
+  private opencodeConfigDir?: string
 
   constructor(options: ModelExecutorOptions = {}) {
     this.selector = options.selector || new ModelSelector()
@@ -38,6 +43,8 @@ export class ModelExecutor {
     this.maxAttempts = options.maxAttempts ?? 3
     this.privateDir = options.privateDir || process.env.RUNNER_TEMP || "./private-storage"
     this.workspaceDir = options.workspaceDir
+    this.opencodeConfigPath = options.opencodeConfigPath
+    this.opencodeConfigDir = options.opencodeConfigDir
   }
 
   public async executeLane(
@@ -55,7 +62,7 @@ export class ModelExecutor {
           success: false,
           status: attempts[attempts.length - 1]?.status || "UNAVAILABLE",
           attempts,
-          error: "All permitted fallback models exhausted"
+          error: "FREE_MODEL_UNAVAILABLE"
         }
       }
 
@@ -66,13 +73,37 @@ export class ModelExecutor {
       if (this.runnerFactory) {
         runner = this.runnerFactory(model)
       } else {
+        if (this.opencodeConfigPath && this.opencodeConfigDir && this.workspaceDir) {
+          const preflight = new CapabilityRuntimeManager().preflightOpenCodeConfig({
+            configPath: this.opencodeConfigPath,
+            configDir: this.opencodeConfigDir,
+            targetWorkspaceDir: this.workspaceDir,
+            model
+          })
+          if (!preflight.ok) {
+            return {
+              success: false,
+              status: "FAIL",
+              actualModel: model,
+              attempts,
+              error: preflight.category
+            }
+          }
+        }
         const lanePrivateDir = path.join(this.privateDir, laneId)
         runner = new AgentRunner({
           laneId,
           privateDir: lanePrivateDir,
-          command: "opencode",
-          args: ["run", "-m", model, "--auto", prompt],
-          cwd: this.workspaceDir
+          command: OPENCODE_COMMAND,
+          args: opencodeArgs(["run", "-m", model, "--auto", prompt]),
+          cwd: this.workspaceDir,
+          env:
+            this.opencodeConfigPath && this.opencodeConfigDir
+              ? {
+                  OPENCODE_CONFIG: this.opencodeConfigPath,
+                  OPENCODE_CONFIG_DIR: this.opencodeConfigDir
+                }
+              : undefined
         })
       }
 
@@ -101,7 +132,7 @@ export class ModelExecutor {
         runResult.status === "RATE_LIMITED" ||
         runResult.status === "STALLED" ||
         runResult.status === "UNAVAILABLE" ||
-        runResult.errorCategory === "SPAWN_ERROR" ||
+        runResult.errorCategory === "PROCESS_ERROR" ||
         runResult.errorCategory === "MODEL_UNAVAILABLE"
 
       if (isTransientOrInfrastructure && i + 1 < this.maxAttempts) {

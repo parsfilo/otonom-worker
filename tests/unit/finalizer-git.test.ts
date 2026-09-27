@@ -237,4 +237,27 @@ describe("Authoritative Git Change Detection in Finalizer", () => {
     expect(() => detector.normalizePath("../outside.ts")).toThrow(/traversal/i)
     expect(() => detector.normalizePath("foo/../../bar.ts")).toThrow(/traversal/i)
   })
+
+  it("Scenario 9: control and private files outside target repo produce zero git changes", () => {
+    const privateDir = path.join(tempDir, "otonom-private", "lane-git-test")
+    const opencodeDir = path.join(controlDir, "opencode")
+    fs.mkdirSync(path.join(opencodeDir, "plugins"), { recursive: true })
+    fs.mkdirSync(privateDir, { recursive: true })
+    fs.writeFileSync(path.join(controlDir, "task.json"), "{}\n")
+    fs.writeFileSync(path.join(controlDir, "result.json"), "{}\n")
+    fs.writeFileSync(path.join(controlDir, "evidence.json"), "{}\n")
+    fs.writeFileSync(path.join(opencodeDir, "opencode.json"), "{}\n")
+    fs.writeFileSync(path.join(opencodeDir, "plugins", "otonom-harness.ts"), "export {}\n")
+    fs.writeFileSync(path.join(privateDir, "opencode.stdout.log"), "private\n")
+
+    const detector = new GitChangeDetector({
+      workspaceRoot: repoDir,
+      baseSha
+    })
+
+    expect(detector.detectChanges().actualChangedPaths).toEqual([])
+
+    fs.appendFileSync(path.join(repoDir, "src", "allowed.ts"), "// real edit\n")
+    expect(detector.detectChanges().actualChangedPaths).toEqual(["src/allowed.ts"])
+  })
 })

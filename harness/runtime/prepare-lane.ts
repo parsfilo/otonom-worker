@@ -25,11 +25,14 @@ export function prepareLane(
   fs.writeFileSync(taskFilePath, JSON.stringify(currentTask, null, 2))
   console.log(`[Prepare Lane] Wrote lane contract to: ${taskFilePath}`)
 
-  // 2. Generate role-based OpenCode & MCP configuration for the lane
+  // 2. Generate role-based OpenCode & MCP configuration outside target Git
   const capabilityManager = new CapabilityRuntimeManager()
-  const opencodeConfigPath = path.join(targetWorkspace, ".opencode/opencode.json")
+  const opencodeConfigDir = path.join(controlDir, "opencode")
+  const opencodeConfigPath = path.join(opencodeConfigDir, "opencode.json")
+  const pluginPath = capabilityManager.copyHarnessPlugin(opencodeConfigDir)
   capabilityManager.writeLaneConfig((currentTask as any).role, targetWorkspace, opencodeConfigPath)
   console.log(`[Prepare Lane] Configured role capabilities (${(currentTask as any).role}) at: ${opencodeConfigPath}`)
+  console.log(`[Prepare Lane] Copied harness plugin to: ${pluginPath}`)
 }
 
 if (process.argv[1] && process.argv[1].endsWith("prepare-lane.ts")) {

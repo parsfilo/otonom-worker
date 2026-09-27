@@ -43,7 +43,7 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     const result = await executor.executeLane("lane-1", "builder-core")
     expect(result.success).toBe(true)
     expect(result.status).toBe("PASS")
-    expect(result.actualModel).toBe("zen/gemini-2.5-flash")
+    expect(result.actualModel).toMatch(/^opencode\/.*-free/)
     expect(result.attempts.length).toBe(1)
   })
 
@@ -88,7 +88,8 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     const result = await executor.executeLane("lane-1", "builder-core")
     expect(result.success).toBe(true)
     expect(result.status).toBe("PASS")
-    expect(result.actualModel).toBe("zen/qwen-2.5-coder-32b")
+    expect(result.actualModel).toMatch(/^opencode\/.*-free/)
+    expect(result.actualModel).not.toBe(result.attempts[0].model)
     expect(result.attempts.length).toBe(2)
     expect(result.attempts[0].status).toBe("RATE_LIMITED")
     expect(result.attempts[1].status).toBe("PASS")
@@ -141,8 +142,7 @@ describe("Model Selector & Execution Driver with Fallback", () => {
 
   it("Test 4: unavailable model in catalog is skipped", async () => {
     const selector = new ModelSelector({
-      // Catalog where gemini is not available, but qwen is available
-      availableCatalog: ["zen/qwen-2.5-coder-32b", "zen/deepseek-v3"]
+      availableCatalog: ["opencode/longcat-2.5-preview-free"]
     })
 
     const fakeRunnerFactory = (model: string) => ({
@@ -166,8 +166,7 @@ describe("Model Selector & Execution Driver with Fallback", () => {
 
     const result = await executor.executeLane("lane-1", "builder-core")
     expect(result.success).toBe(true)
-    // First candidate zen/gemini-2.5-flash was skipped because it's not in catalog
-    expect(result.actualModel).toBe("zen/qwen-2.5-coder-32b")
+    expect(result.actualModel).toBe("opencode/longcat-2.5-preview-free")
   })
 
   it("Test 5: all models exhausted -> explicit failure", async () => {

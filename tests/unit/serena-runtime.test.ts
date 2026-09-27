@@ -24,11 +24,16 @@ describe("Serena Runtime Wiring & Lifecycle", () => {
     expect(config.mcp).toBeDefined()
     expect(config.mcp.serena).toBeDefined()
     const serenaMcp = config.mcp.serena
-    expect(serenaMcp.args).toContain(tempDir.replace(/\\/g, "/"))
-    expect(serenaMcp.args).toEqual(
+    expect(serenaMcp.type).toBe("local")
+    expect(serenaMcp.enabled).toBe(true)
+    expect(serenaMcp.command).toContain(tempDir.replace(/\\/g, "/"))
+    expect(serenaMcp.command).toEqual(
       expect.arrayContaining([expect.stringContaining("949a27ef1e5fda1a6e7b561e777bcece345c6ffd")])
     )
-    expect(serenaMcp.env.SERENA_SHARED_MEMORY).toBe("false")
+    expect(serenaMcp.command).toEqual(expect.arrayContaining(["serena", "start-mcp-server", "--project"]))
+    expect(serenaMcp.command).not.toContain("serena-mcp-server")
+    expect(serenaMcp.environment.SERENA_SHARED_MEMORY).toBe("false")
+    expect(serenaMcp.env).toBeUndefined()
   })
 
   it("supervises Serena lifecycle and logs serena_runtime: PASS safely", async () => {

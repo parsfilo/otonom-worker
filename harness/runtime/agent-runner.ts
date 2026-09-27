@@ -124,7 +124,7 @@ export class AgentRunner {
           stdoutPath,
           stderrPath,
           sanitizedSummary: summary,
-          errorCategory: "SPAWN_ERROR"
+          errorCategory: "PROCESS_ERROR"
         })
       })
 
@@ -206,7 +206,31 @@ export class AgentRunner {
     const rateLimitRegex =
       /(?:429|rate[\s_-]*limit|quota[\s_-]*exceeded|too many requests)/i
     if (rateLimitRegex.test(logHeadAndTail)) {
-      return { status: "RATE_LIMITED", errorCategory: "RATE_LIMIT" }
+      return { status: "RATE_LIMITED", errorCategory: "RATE_LIMITED" }
+    }
+
+    const pluginRegex =
+      /(?:plugin.*(?:not found|load|failed|error)|Cannot find module.*plugin|failed.*plugin)/i
+    if (pluginRegex.test(logHeadAndTail)) {
+      return { status: "FAIL", errorCategory: "PLUGIN_LOAD_ERROR" }
+    }
+
+    const mcpConfigRegex =
+      /(?:Missing key mcp\.|Expected type "local"|"remote"|invalid.*mcp|mcp.*schema)/i
+    if (mcpConfigRegex.test(logHeadAndTail)) {
+      return { status: "FAIL", errorCategory: "MCP_CONFIG_ERROR" }
+    }
+
+    const configRegex =
+      /(?:config.*invalid|invalid.*config|failed to parse.*config|configuration.*(?:parse|invalid))/i
+    if (configRegex.test(logHeadAndTail)) {
+      return { status: "FAIL", errorCategory: "CONFIG_INVALID" }
+    }
+
+    const mcpStartRegex =
+      /(?:mcp.*(?:start|spawn|connect).*failed|failed to start.*mcp|mcp.*connection)/i
+    if (mcpStartRegex.test(logHeadAndTail)) {
+      return { status: "FAIL", errorCategory: "MCP_START_ERROR" }
     }
 
     const unavailableRegex =

@@ -37,60 +37,43 @@ export class ModelSelector {
 
   private executionHistory: Map<string, ModelAttempt[]> = new Map()
 
+  public static isSafeFreeModel(model: string): boolean {
+    const normalized = model.replace(":", "/")
+    return normalized.startsWith("opencode/") && normalized.includes("-free")
+  }
+
   constructor(options?: ModelSelectorOptions) {
     if (options?.customChains) {
       this.roleChains = { ...options.customChains }
     } else {
       this.roleChains = {
-        "builder-core": [
-          "zen/gemini-2.5-flash",
-          "zen/qwen-2.5-coder-32b",
-          "zen/deepseek-v3",
-          "zen/llama-3.3-70b"
-        ],
-        "builder-db": [
-          "zen/gemini-2.5-flash",
-          "zen/deepseek-v3",
-          "zen/qwen-2.5-coder-32b"
-        ],
-        "reviewer-cross-system": [
-          "zen/deepseek-v3",
-          "zen/gemini-2.5-flash",
-          "zen/llama-3.3-70b"
-        ],
-        "security-reviewer": [
-          "zen/deepseek-v3",
-          "zen/llama-3.3-70b",
-          "zen/gemini-2.5-flash"
-        ],
-        "ci-reviewer": [
-          "zen/gemini-2.5-flash",
-          "zen/qwen-2.5-coder-32b"
-        ],
-        "ui-builder": [
-          "zen/gemini-2.5-flash",
-          "zen/qwen-2.5-coder-32b"
-        ],
-        "integration-reviewer": [
-          "zen/deepseek-v3",
-          "zen/gemini-2.5-flash"
-        ],
-        "final-auditor": [
-          "zen/deepseek-v3",
-          "zen/gemini-2.5-flash"
-        ]
+        "builder-core": [...this.defaultChain],
+        "builder-db": [...this.defaultChain],
+        "reviewer-cross-system": [...this.defaultChain],
+        "security-reviewer": [...this.defaultChain],
+        "ci-reviewer": [...this.defaultChain],
+        "ui-builder": [...this.defaultChain],
+        "integration-reviewer": [...this.defaultChain],
+        "final-auditor": [...this.defaultChain]
       }
     }
 
     if (options?.autoDiscover) {
       const discovered = ModelSelector.discoverFreeModels()
+      if (discovered.length === 0) {
+        throw new Error("FREE_MODEL_UNAVAILABLE")
+      }
       this.availableCatalog = new Set(discovered.map((m) => this.normalizeModel(m)))
       for (const role of Object.keys(this.roleChains)) {
         this.roleChains[role] = [...discovered]
       }
       this.defaultChain = [...discovered]
     } else if (options?.availableCatalog) {
-      this.availableCatalog = new Set(options.availableCatalog.map((m) => this.normalizeModel(m)))
+      this.availableCatalog = new Set(
+        options.availableCatalog
+          .map((m) => this.normalizeModel(m))
+          .filter((m) => ModelSelector.isSafeFreeModel(m))
+      )
     }
   }
 
@@ -101,18 +84,10 @@ export class ModelSelector {
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 15000
       })
-      const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-      const free = lines.filter((m) => m.endsWith("-free") || m.includes("-free"))
-      if (free.length > 0) {
-        return free
-      }
+      const lines = output.split(/\r?\n/).map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean)
+      return lines.filter((m) => ModelSelector.isSafeFreeModel(m))
     } catch {}
-    return [
-      "opencode/nemotron-3.5-lightning-free",
-      "opencode/space-bunny-free",
-      "opencode/mimo-v2.6-flash-free",
-      "opencode/longcat-2.5-preview-free"
-    ]
+    return []
   }
 
   public normalizeModel(model: string): string {
@@ -122,13 +97,12 @@ export class ModelSelector {
   public selectModelForRole(role: string): string {
     const candidate = this.getFallbackModel(role, [])
     if (candidate) return candidate
-    const chain = this.roleChains[role] || this.defaultChain
-    return chain[0]
+    throw new Error("FREE_MODEL_UNAVAILABLE")
   }
 
   public getAllModelsForRole(role: string): string[] {
     const chain = this.roleChains[role] || this.defaultChain
-    if (!this.availableCatalog) return [...chain]
+    if (!this.availableCatalog) return chain.filter((m) => ModelSelector.isSafeFreeModel(m))
     return chain.filter(m => this.availableCatalog!.has(m))
   }
 
@@ -142,6 +116,9 @@ export class ModelSelector {
         continue
       }
       if (this.availableCatalog && !this.availableCatalog.has(norm)) {
+        continue
+      }
+      if (!ModelSelector.isSafeFreeModel(norm)) {
         continue
       }
       return norm

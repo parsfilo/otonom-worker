@@ -139,6 +139,31 @@ describe("Logging Confidentiality & Execution Supervision", () => {
     expect(allPublicOutput).toContain("RATE_LIMITED")
   })
 
+  it("Test D2: OpenCode MCP config errors are classified without exposing raw stderr", async () => {
+    const fakeAgentScript = path.join(tempDir, "fake-agent-mcp-config.js")
+    fs.writeFileSync(
+      fakeAgentScript,
+      `console.error('Expected type "local" | "remote", got type "stdio"\\nMissing key mcp.serena.enabled');\nprocess.exit(1);`
+    )
+
+    const interceptedPublicLogs: string[] = []
+    const runner = new AgentRunner({
+      laneId: "lane-test",
+      privateDir,
+      command: process.execPath,
+      args: [fakeAgentScript],
+      onPublicLog: (msg) => interceptedPublicLogs.push(msg)
+    })
+
+    const result = await runner.run()
+    expect(result.status).toBe("FAIL")
+    expect(result.errorCategory).toBe("MCP_CONFIG_ERROR")
+
+    const allPublicOutput = interceptedPublicLogs.join("\n")
+    expect(allPublicOutput).not.toContain("Missing key mcp.serena.enabled")
+    expect(allPublicOutput).not.toContain("stdio")
+  })
+
   it("Test E: STALLED output remains private and process is terminated safely", async () => {
     const fakeAgentScript = path.join(tempDir, "fake-agent-stall.js")
     // Hangs forever while printing sensitive info periodically
