@@ -164,6 +164,42 @@ describe("Logging Confidentiality & Execution Supervision", () => {
     expect(allPublicOutput).not.toContain("stdio")
   })
 
+  it("Test D3: upstream endpoint unavailable is classified for bounded model fallback", async () => {
+    const script = path.join(tempDir, "endpoint-unavailable.js")
+    fs.writeFileSync(script, `process.stderr.write("Upstream request failed: Endpoint is unavailable.\n"); process.exit(1)`)
+    const publicLogs: string[] = []
+    const runner = new AgentRunner({
+      laneId: "endpoint-unavailable",
+      privateDir,
+      command: process.execPath,
+      args: [script],
+      onPublicLog: (message) => publicLogs.push(message)
+    })
+
+    const result = await runner.run()
+    expect(result.status).toBe("UNAVAILABLE")
+    expect(result.errorCategory).toBe("MODEL_UNAVAILABLE")
+    expect(publicLogs.join("\n")).not.toContain("Endpoint is unavailable")
+  })
+
+  it("Test D4: disabled free-model access is classified as unavailable for fallback", async () => {
+    const script = path.join(tempDir, "model-access-disabled.js")
+    fs.writeFileSync(script, `process.stderr.write("Upstream request failed: Model access is disabled\n"); process.exit(1)`)
+    const publicLogs: string[] = []
+    const runner = new AgentRunner({
+      laneId: "model-access-disabled",
+      privateDir,
+      command: process.execPath,
+      args: [script],
+      onPublicLog: (message) => publicLogs.push(message)
+    })
+
+    const result = await runner.run()
+    expect(result.status).toBe("UNAVAILABLE")
+    expect(result.errorCategory).toBe("MODEL_UNAVAILABLE")
+    expect(publicLogs.join("\n")).not.toContain("Model access is disabled")
+  })
+
   it("Test E: STALLED output remains private and process is terminated safely", async () => {
     const fakeAgentScript = path.join(tempDir, "fake-agent-stall.js")
     // Hangs forever while printing sensitive info periodically

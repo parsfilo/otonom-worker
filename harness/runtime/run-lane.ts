@@ -99,7 +99,9 @@ export async function runLane(
       findings_fixed: [],
       remaining_blockers: isPassing
         ? []
-        : [requiredWorkMissing ? "NO_WORK_PRODUCT" : (execResult.error || "RESULT_MISSING")],
+        : [execResult.status !== "PASS"
+            ? (execResult.error || execResult.status)
+            : (requiredWorkMissing ? "NO_WORK_PRODUCT" : "RESULT_MISSING")],
       cross_lane_request_count: 0,
       loop_metrics: {
         tool_repeats: 0,
