@@ -78,7 +78,7 @@ export class CapabilityRuntimeManager {
     return profile
   }
 
-  public prepareSerenaHome(controlDir: string): SerenaRuntimePaths {
+  public prepareSerenaHome(controlDir: string, uvxCommand = "uvx"): SerenaRuntimePaths {
     const homeDir = path.resolve(controlDir, "serena-home")
     const configPath = path.join(homeDir, "serena_config.yml")
     const projectDataDir = path.resolve(controlDir, "serena-project-data")
@@ -87,7 +87,7 @@ export class CapabilityRuntimeManager {
 
     try {
       execFileSync(
-        "uvx",
+        uvxCommand,
         [
           "--from",
           `git+https://github.com/oraios/serena@${SERENA_COMMIT}`,
@@ -103,7 +103,13 @@ export class CapabilityRuntimeManager {
           timeout: 120000
         }
       )
-    } catch {
+    } catch (error: any) {
+      if (error?.code === "ENOENT") {
+        throw new Error("SERENA_UVX_NOT_FOUND")
+      }
+      if (error?.code === "ETIMEDOUT") {
+        throw new Error("SERENA_CONFIG_INIT_TIMEOUT")
+      }
       throw new Error("SERENA_CONFIG_INIT_FAILED")
     }
 

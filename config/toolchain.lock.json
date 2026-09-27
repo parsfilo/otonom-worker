@@ -3,6 +3,11 @@
   "toolchain_lock_version": "1.0.0",
   "generated_at": "2026-09-27T21:30:00Z",
   "runtime": {
+    "uv": {
+      "package": "uv",
+      "version": "0.12.19",
+      "python_package": true
+    },
     "opencode": {
       "version": "1.18.32",
       "package": "opencode-ai",

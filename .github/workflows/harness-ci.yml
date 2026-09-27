@@ -41,6 +41,18 @@ jobs:
       - name: Validate Skills
         run: pnpm tsx scripts/validate-skills.ts
 
+      - name: Install Pinned uv Toolchain
+        run: |
+          python3 -m venv /opt/uv-tools
+          /opt/uv-tools/bin/pip install --upgrade pip
+          /opt/uv-tools/bin/pip install "uv==0.12.19"
+          echo "/opt/uv-tools/bin" >> "$GITHUB_PATH"
+
+      - name: Verify uv Toolchain
+        run: |
+          uv --version
+          uvx --version
+
       - name: Run Full Test Suite
         run: pnpm test
 

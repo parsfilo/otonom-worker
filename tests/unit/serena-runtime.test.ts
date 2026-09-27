@@ -80,6 +80,14 @@ describe("Serena Runtime Wiring & Lifecycle", () => {
     ).toBe("")
   }, 90000)
 
+  it("classifies a missing uvx executable without exposing process output", () => {
+    const manager = new CapabilityRuntimeManager()
+
+    expect(() => manager.prepareSerenaHome(path.join(tempDir, "control"), "uvx-missing-for-test")).toThrow(
+      "SERENA_UVX_NOT_FOUND"
+    )
+  })
+
   it("uses OpenCode as the only Serena MCP server launch path", () => {
     const manager = new CapabilityRuntimeManager()
     const config = manager.generateOpenCodeConfig("builder-core", tempDir, {

@@ -134,11 +134,16 @@ jobs:
           npm install -g opencode-ai@1.18.32
           # Pinned Language Servers & CLI Tools
           npm install -g typescript-language-server@4.3.3 yaml-language-server@1.15.0 bash-language-server@5.4.3 vscode-langservers-extracted@4.10.0 @ast-grep/cli@0.45.3
-          # uv / uvx for Serena runtime supervisor
+          # Pinned uv / uvx for Serena runtime
           python3 -m venv /opt/uv-tools
           /opt/uv-tools/bin/pip install --upgrade pip
-          /opt/uv-tools/bin/pip install uv
+          /opt/uv-tools/bin/pip install "uv==0.12.19"
           echo "/opt/uv-tools/bin" >> "$GITHUB_PATH"
+
+      - name: Verify uv Toolchain
+        run: |
+          uv --version
+          uvx --version
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
