@@ -55,8 +55,8 @@ jobs:
           sudo mv ./actionlint /usr/local/bin/
           # 2. Install zizmor & semgrep in isolated environment
           python3 -m venv /opt/sec-tools
-          /opt/sec-tools/bin/pip install --upgrade pip setuptools
-          /opt/sec-tools/bin/pip install zizmor==1.4.1 semgrep==1.99.0
+          /opt/sec-tools/bin/pip install --upgrade pip
+          /opt/sec-tools/bin/pip install "setuptools<82" zizmor==1.4.1 semgrep==1.99.0
           echo "/opt/sec-tools/bin" >> "$GITHUB_PATH"
 
       - name: Run actionlint on Workflows
