@@ -24,6 +24,23 @@ describe("Schema Validator", () => {
     expect(res.errors).toBeUndefined()
   })
 
+  it("accepts target-ci as a bounded verification profile", () => {
+    const task = {
+      id: "target-ci-lane",
+      title: "Target CI verification lane",
+      role: "builder-core",
+      source_repository: "oaslananka/otonom",
+      base_sha: "0123456789abcdef0123456789abcdef01234567",
+      objectives: ["Produce bounded work"],
+      allowed_write_paths: ["src/**"],
+      acceptance_criteria: ["Target PR CI performs dependency-backed checks"],
+      verification_profile: "target-ci",
+      risk_classification: "LOW"
+    }
+
+    expect(validateTask(task).valid).toBe(true)
+  })
+
   it("rejects task with invalid SHA or role", () => {
     const invalidTask = {
       id: "webhook-durability",

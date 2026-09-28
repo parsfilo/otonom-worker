@@ -94,6 +94,7 @@
         "lane",
         "full",
         "review-only",
+        "target-ci",
         "smoke-doc"
       ]
     },
