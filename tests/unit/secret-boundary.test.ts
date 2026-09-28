@@ -125,12 +125,4 @@ describe("Agent Secret Boundary Assertion", () => {
       /Security boundary violation: target \.git\/config contains forbidden credential pattern/i
     )
   })
-  it("allows OpenCode provider authentication at the parent process boundary", () => {
-    const env = {
-      PATH: "/usr/bin",
-      OPENCODE_API_KEY: "provider-auth-is-not-a-target-repo-credential"
-    }
-    expect(() => assertAgentSecretBoundary(env, tempDir)).not.toThrow()
-  })
-
 })

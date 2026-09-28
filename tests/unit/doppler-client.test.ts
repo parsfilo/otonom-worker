@@ -11,8 +11,7 @@ describe("TrustedDopplerClient & Preflight", () => {
     OTONOM_GIT_COMMITTER_EMAIL: "swarm-bot@otonom.internal",
     SWARM_MAX_PARALLEL: "5",
     SWARM_DEFAULT_TIMEOUT_MINUTES: "30",
-    OPENCODE_PINNED_VERSION: "1.18.32",
-    OPENCODE_API_KEY: "oc-test-provider-credential"
+    OPENCODE_PINNED_VERSION: "1.18.32"
   }
 
   it("preflight succeeds with valid configuration and forces effective parallelism to 1", () => {
@@ -24,7 +23,7 @@ describe("TrustedDopplerClient & Preflight", () => {
     const result = client.runPreflight({ forceSingleAgent: true })
 
     expect(result.valid).toBe(true)
-    expect(result.requiredValuesPresent).toBe(10)
+    expect(result.requiredValuesPresent).toBe(9)
     expect(result.effectiveParallelism).toBe(1)
     expect(result.errors).toHaveLength(0)
   })
@@ -145,7 +144,7 @@ describe("TrustedDopplerClient & Preflight", () => {
 
     client.logPreflightSummary({
       valid: true,
-      requiredValuesPresent: 10,
+      requiredValuesPresent: 9,
       effectiveParallelism: 1,
       errors: []
     })
@@ -154,10 +153,9 @@ describe("TrustedDopplerClient & Preflight", () => {
 
     const combinedOutput = logs.join("\n")
     expect(combinedOutput).toContain("doppler_preflight: PASS")
-    expect(combinedOutput).toContain("required_values_present: 10")
+    expect(combinedOutput).toContain("required_values_present: 9")
     expect(combinedOutput).toContain("effective_parallelism: 1")
     expect(combinedOutput).not.toContain(validMockSecrets.OTONOM_SOURCE_CLONE_TOKEN)
     expect(combinedOutput).not.toContain(validMockSecrets.OTONOM_TARGET_WRITE_TOKEN)
-    expect(combinedOutput).not.toContain(validMockSecrets.OPENCODE_API_KEY)
   })
 })

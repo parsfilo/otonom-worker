@@ -82,13 +82,6 @@ requirements:
     purpose: "Version string for OpenCode CLI (defaults to 1.18.32 pinned in toolchain.lock.json)"
     exposure_policy: "Publicly visible in bootstrap logs"
 
-  - name: "OPENCODE_API_KEY"
-    type: "secret"
-    consumer: "opencode-runtime"
-    required: true
-    purpose: "OpenCode Zen gateway authentication used by zero-price/free model IDs on clean CI runners"
-    exposure_policy: "Available only to the OpenCode parent process; stripped from agent shell tools and all trusted verification subprocesses"
-
   - name: "OPENCODE_MODEL_POLICY"
     type: "config"
     consumer: "runtime-model-selector"
