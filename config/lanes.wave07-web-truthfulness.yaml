@@ -1,0 +1,97 @@
+tasks:
+  - id: "web-runs-truthful-surface"
+    title: "Remove fabricated run events and unwired SSE state from the web Runs page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "f2ff66ae54f4c24c8029ff41677bea5f52090540"
+    objectives:
+      - "Update only apps/web/src/app/runs/page.tsx."
+      - "Remove fabricated initial run events, hardcoded project/cursor values, and the misleading initial Connected state."
+      - "Remove the unwired browser EventSource subscription unless a current public web-safe SSE contract can be proven from the existing source without adding credentials or new APIs."
+      - "Render a truthful unavailable/not-exposed state for run/event streaming when no public web-safe listing/stream contract is available."
+      - "Remove filters or connection/cursor UI that imply live events exist when they do not."
+      - "Do not introduce manager credentials, client-side secrets, new API routes, dependencies, fake events, fake cursors, or fake connection health."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/runs/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated run/log events or fake connection/cursor state remains."
+      - "No hardcoded project ID or actor is used for a browser SSE connection."
+      - "The page truthfully states the current public web-safe run/event limitation."
+      - "No new auth workaround, endpoint, credential, or dependency is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-attention-truthful-surface"
+    title: "Remove fabricated human-attention incidents and unwired actions"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "f2ff66ae54f4c24c8029ff41677bea5f52090540"
+    objectives:
+      - "Update only apps/web/src/app/attention/page.tsx."
+      - "Remove fabricated escalation/cleanup-warning incidents, severity, timestamps, and descriptions."
+      - "Remove unwired Resolve with Directive and Dismiss controls."
+      - "Render a truthful unavailable state explaining that live human-attention listing and mutation are not exposed through the current public web-safe API contract."
+      - "Do not invent incidents, action endpoints, manager credentials, resolution state, or operational status."
+      - "Prefer a simple server component if client state is no longer needed."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/attention/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated attention incident data remains."
+      - "No unwired Resolve/Dismiss actions remain."
+      - "The page clearly states the current public web-safe API limitation."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-task-detail-truthful-surface"
+    title: "Remove fabricated DAG detail, quality gates, evidence, and task controls"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "f2ff66ae54f4c24c8029ff41677bea5f52090540"
+    objectives:
+      - "Update only apps/web/src/app/tasks/[id]/page.tsx."
+      - "Preserve the requested route task id only as navigation/context, but do not imply it was found or loaded."
+      - "Remove fabricated task title/repository/status/path locks/DAG stages/models/durations/quality-gate results/evidence patch/base SHA/checksum."
+      - "Remove unwired Pause DAG, Retry Active Node, and Cancel DAG controls."
+      - "Render a truthful unavailable/not-exposed state explaining that live task detail, DAG execution graph, evidence, and control mutations are not exposed through the current public web-safe API contract."
+      - "Do not invent a task lookup, manager-auth flow, credentials, API endpoint, operational status, or action handler."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/tasks/[id]/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "Only the route id may remain as user-provided context; no fabricated task/DAG/gate/evidence data remains."
+      - "No Pause/Retry/Cancel control remains without a live contract."
+      - "The page clearly states that task details and mutations are unavailable through the current public web-safe API."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
