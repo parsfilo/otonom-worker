@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import os from "node:os"
 import { execFileSync } from "node:child_process"
 import yaml from "yaml"
 import { sanitizeEnv } from "../policies/env-policy.js"
@@ -339,11 +340,16 @@ export class CapabilityRuntimeManager {
     if (!input.model.startsWith("opencode/") || !input.model.includes("-free")) {
       return { ok: false, category: "MODEL_UNAVAILABLE", message: "unsafe model candidate" }
     }
+    const preflightHome = fs.mkdtempSync(path.join(os.tmpdir(), "otonom-opencode-preflight-"))
     try {
       execFileSync(OPENCODE_COMMAND, opencodeArgs(["debug", "config"]), {
         cwd: input.targetWorkspaceDir,
         env: {
           ...sanitizeEnv(process.env),
+          HOME: preflightHome,
+          XDG_CONFIG_HOME: path.join(preflightHome, ".config"),
+          XDG_DATA_HOME: path.join(preflightHome, ".local", "share"),
+          XDG_CACHE_HOME: path.join(preflightHome, ".cache"),
           OPENCODE_CONFIG: input.configPath,
           OPENCODE_CONFIG_DIR: input.configDir
         },
@@ -353,6 +359,8 @@ export class CapabilityRuntimeManager {
       return { ok: true }
     } catch (err: any) {
       return { ok: false, category: "CONFIG_INVALID", message: err.message }
+    } finally {
+      fs.rmSync(preflightHome, { recursive: true, force: true })
     }
   }
 }

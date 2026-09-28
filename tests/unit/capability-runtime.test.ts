@@ -253,4 +253,35 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
       "docs/swarm-smoke/phase2-harness-validation.md"
     ])
   })
+
+  it("runs OpenCode config preflight in an isolated disposable HOME", () => {
+    const callerHome = fs.mkdtempSync(path.join(os.tmpdir(), "caller-home-"))
+    const oldHome = process.env.HOME
+    process.env.HOME = callerHome
+    try {
+      const repoDir = path.join(tempDir, "repo-preflight-home")
+      fs.mkdirSync(repoDir, { recursive: true })
+      execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+      const configDir = path.join(tempDir, "preflight-config")
+      fs.mkdirSync(configDir, { recursive: true })
+      const configPath = path.join(configDir, "opencode.json")
+      fs.writeFileSync(configPath, JSON.stringify({ plugin: [] }))
+
+      const manager = new CapabilityRuntimeManager()
+      const result = manager.preflightOpenCodeConfig({
+        configPath,
+        configDir,
+        targetWorkspaceDir: repoDir,
+        model: "opencode/mimo-v2.6-flash-free"
+      })
+      expect(result.ok).toBe(true)
+      expect(fs.existsSync(path.join(callerHome, ".local", "share", "opencode"))).toBe(false)
+      expect(fs.existsSync(path.join(callerHome, ".config", "opencode"))).toBe(false)
+    } finally {
+      if (oldHome === undefined) delete process.env.HOME
+      else process.env.HOME = oldHome
+      fs.rmSync(callerHome, { recursive: true, force: true })
+    }
+  })
+
 })
