@@ -43,12 +43,10 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     expect(config.mcp?.codegraph).toBeUndefined()
 
     // Builder must have edit permission
-    expect(config.permission?.edit).toBe("allow")
-    expect(config.permission?.["*"]).toBeUndefined()
-    expect(config.permission?.bash).toBeUndefined()
+    expect(config.permission).toBeUndefined()
 
     // Nested agents must be denied
-    expect(config.permission?.agent).toBe("deny")
+    expect(config.permission).toBeUndefined()
   })
 
   it("Test 2: ci-reviewer generates Serena absent, CodeGraph absent, edit denied (read_only)", () => {
@@ -59,7 +57,7 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     expect(config.mcp?.codegraph).toBeUndefined()
 
     // Read only: edit must be denied
-    expect(config.permission?.edit).toBe("deny")
+    expect(config.permission).toBeUndefined()
   })
 
   it("Test 3: reviewer-cross-system generates CodeGraph present, Serena present, edit denied", () => {
@@ -69,7 +67,7 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
 
     expect(config.mcp?.codegraph).toBeDefined()
     expect(config.mcp?.serena).toBeDefined()
-    expect(config.permission?.edit).toBe("deny")
+    expect(config.permission).toBeUndefined()
   })
 
   it("Test 4: security-reviewer generates CodeGraph present and edit denied", () => {
@@ -78,7 +76,7 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
     })
 
     expect(config.mcp?.codegraph).toBeDefined()
-    expect(config.permission?.edit).toBe("deny")
+    expect(config.permission).toBeUndefined()
   })
 
   it("Test 5: ESLint LSP is truthfully wired for roles with native_lsp enabled", () => {

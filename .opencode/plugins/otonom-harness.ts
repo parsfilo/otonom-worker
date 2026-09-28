@@ -38,6 +38,23 @@ const DEPENDENCY_CONTROL_PATHS = [
   "bun.lockb"
 ]
 
+
+const READ_ONLY_ROLES = new Set([
+  "reviewer-cross-system",
+  "security-reviewer",
+  "ci-reviewer",
+  "integration-reviewer",
+  "final-auditor"
+])
+
+const BLOCKED_TOOLS = new Set(["task", "agent", "webfetch", "websearch"])
+
+function isOutsideWorkspace(workspaceRoot: string, candidate: string): boolean {
+  const resolved = path.resolve(workspaceRoot, candidate)
+  const relative = path.relative(workspaceRoot, resolved)
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+}
+
 function asToolOutput(value: unknown): string {
   return JSON.stringify(value)
 }
@@ -92,6 +109,20 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       input: { tool: string; sessionID?: string; callID?: string },
       output: { args: any }
     ) => {
+      if (BLOCKED_TOOLS.has(input.tool)) {
+        throw new Error(`Tool blocked by harness security policy: ${input.tool}`)
+      }
+
+      if (input.tool === "read") {
+        const rawReadPath = output.args?.filePath || output.args?.path || ""
+        if (rawReadPath) {
+          const normalized = rawReadPath.replace(/\\/g, "/")
+          if (isOutsideWorkspace(workspaceRoot, rawReadPath) || /(?:^|\/)\.env(?:\.|$)/i.test(normalized)) {
+            throw new Error("Read blocked by harness workspace boundary")
+          }
+        }
+      }
+
       const loopState = loopDetector.recordToolCall(input.tool, output.args)
       if (loopState === LoopStatus.WARNING) {
         logger.logPrivateDiagnostic(`[LoopDetector] Stall warning on repeated tool: ${input.tool}`)
@@ -119,6 +150,9 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       }
 
       if (["edit", "write", "patch"].includes(input.tool)) {
+        if (task && READ_ONLY_ROLES.has(task.role)) {
+          throw new Error(`Mutation blocked: role '${task.role}' is read-only.`)
+        }
         const rawTargetPath = output.args?.filePath || output.args?.path || ""
         if (rawTargetPath) {
           const relativePath = path.isAbsolute(rawTargetPath)

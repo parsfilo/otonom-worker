@@ -171,4 +171,12 @@ describe("OpenCode Otonom Harness Plugin", () => {
     ).rejects.toThrow("Dependency mutation blocked")
   })
 
+
+  it("blocks web/subagent tools and external reads in the plugin policy layer", async () => {
+    const plugin: any = createOtonomPlugin({ taskPath, workspaceRoot: tempDir })
+    await expect(plugin.hooks["tool.execute.before"]({ tool: "webfetch" }, { args: { url: "https://example.com" } })).rejects.toThrow("Tool blocked")
+    await expect(plugin.hooks["tool.execute.before"]({ tool: "task" }, { args: {} })).rejects.toThrow("Tool blocked")
+    await expect(plugin.hooks["tool.execute.before"]({ tool: "read" }, { args: { filePath: "/etc/passwd" } })).rejects.toThrow("workspace boundary")
+  })
+
 })

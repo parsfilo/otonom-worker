@@ -241,40 +241,14 @@ export class CapabilityRuntimeManager {
       }
     }
 
-    // 5. Explicit OpenCode permissions. Do not use a global "*": "deny"
-    // or permission.bash override: OpenCode Zen free-tier client validation
-    // rejects those configurations as non-standard harness clients. Bash is
-    // still fail-closed by the harness plugin's command policy hook.
-    const permission: Record<string, any> = {
-      task: "deny",
-      agent: "deny", // Nested agents strictly prohibited
-      doom_loop: "deny",
-      webfetch: "deny",
-      websearch: "deny",
-      external_directory: "deny",
-      read: {
-        "*": "allow",
-        "*.env": "deny",
-        "*.env.*": "deny",
-        "*.env.example": "allow"
-      },
-      edit: profile.read_only ? "deny" : "allow",
-      glob: "allow",
-      grep: "allow",
-      lsp: profile.native_lsp ? "allow" : "deny",
-      skill: "allow",
-      task_context: "allow",
-      run_verification: "allow",
-      complete_lane: "allow",
-      record_finding: "allow",
-      cross_lane_request: "allow"
-    }
+    // 5. Security policy is enforced by the harness plugin and trusted finalizer.
+    // OpenCode Zen anonymous free-tier rejects custom permission objects on clean CI runners,
+    // so do not emit config.permission here.
 
     const config: any = {
       $schema: "https://opencode.ai/config.json",
       name: `otonom-agent-${role}`,
-      plugin: [options.pluginPath || `./plugins/${HARNESS_PLUGIN_NAME}`],
-      permission
+      plugin: [options.pluginPath || `./plugins/${HARNESS_PLUGIN_NAME}`]
     }
 
     if (Object.keys(mcp).length > 0) {
