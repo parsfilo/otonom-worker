@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
 import { reconcileTrustedLaneResult } from "../../harness/runtime/run-lane.js"
+import { VerificationRunner } from "../../harness/verification/runner.js"
 
 function initRepo(root: string) {
   execFileSync("git", ["init"], { cwd: root, stdio: "ignore" })
@@ -75,6 +76,42 @@ describe("trusted lane result reconciliation", () => {
     expect(result.status).toBe("FAIL")
     expect(result.remaining_blockers).toContain("OUT_OF_SCOPE_WORK_PRODUCT")
     expect(result.policy_violations[0].target).toBe("pnpm-lock.yaml")
+  })
+
+  it("fails closed and reports post-verification Git state when trusted verification mutates the workspace", async () => {
+    const out = path.join(repo, "docs/swarm-smoke/phase2-harness-validation.md")
+    fs.mkdirSync(path.dirname(out), { recursive: true })
+    fs.writeFileSync(out, "# smoke\n")
+
+    const verifySpy = vi
+      .spyOn(VerificationRunner.prototype, "runProfile")
+      .mockImplementation(async () => {
+        fs.writeFileSync(path.join(repo, "pnpm-lock.yaml"), "unexpected\n")
+        return {
+          profile: "smoke-doc",
+          command: "test-fixture",
+          exit_code: 0,
+          passed: true,
+          duration_ms: 1
+        }
+      })
+
+    try {
+      const result = await reconcileTrustedLaneResult({
+        task: task(),
+        execResult: execPass,
+        resultPath: path.join(control, "result.json"),
+        targetWorkspaceDir: repo
+      })
+
+      expect(result.status).toBe("FAIL")
+      expect(result.remaining_blockers).toContain("VERIFICATION_MUTATED_WORKSPACE")
+      expect(result.remaining_blockers).toContain("OUT_OF_SCOPE_WORK_PRODUCT")
+      expect(result.changed_paths).toContain("pnpm-lock.yaml")
+      expect(result.policy_violations.some((v: any) => v.target === "pnpm-lock.yaml")).toBe(true)
+    } finally {
+      verifySpy.mockRestore()
+    }
   })
 
   it("fails closed when required work is absent", async () => {
