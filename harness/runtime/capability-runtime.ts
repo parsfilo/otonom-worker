@@ -266,7 +266,6 @@ export class CapabilityRuntimeManager {
       record_finding: "allow",
       cross_lane_request: "allow",
       bash: {
-        "*": "deny",
         "git status*": "allow",
         "git diff*": "allow",
         "git log*": "allow",
@@ -283,7 +282,8 @@ export class CapabilityRuntimeManager {
         "gh *": "deny",
         "sudo *": "deny",
         "ssh *": "deny",
-        "scp *": "deny"
+        "scp *": "deny",
+        "*": "deny"
       }
     }
 

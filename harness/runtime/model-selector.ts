@@ -27,9 +27,9 @@ export class ModelSelector {
   private roleChains: Record<string, string[]>
 
   private defaultChain: string[] = [
+    "opencode/mimo-v2.6-flash-free",
     "opencode/nemotron-3.5-lightning-free",
     "opencode/space-bunny-free",
-    "opencode/mimo-v2.6-flash-free",
     "opencode/longcat-2.5-preview-free",
     "opencode/ling-3.0-flash-fin-free",
     "opencode/muse-spark-1.3-contributor-free"
@@ -63,11 +63,19 @@ export class ModelSelector {
       if (discovered.length === 0) {
         throw new Error("FREE_MODEL_UNAVAILABLE")
       }
-      this.availableCatalog = new Set(discovered.map((m) => this.normalizeModel(m)))
-      for (const role of Object.keys(this.roleChains)) {
-        this.roleChains[role] = [...discovered]
+      const normalizedDiscovered = discovered.map((m) => this.normalizeModel(m))
+      this.availableCatalog = new Set(normalizedDiscovered)
+      const orderByPreference = (chain: string[]) => {
+        const preferred = chain
+          .map((m) => this.normalizeModel(m))
+          .filter((m) => this.availableCatalog!.has(m))
+        const remaining = normalizedDiscovered.filter((m) => !preferred.includes(m))
+        return [...preferred, ...remaining]
       }
-      this.defaultChain = [...discovered]
+      for (const role of Object.keys(this.roleChains)) {
+        this.roleChains[role] = orderByPreference(this.roleChains[role])
+      }
+      this.defaultChain = orderByPreference(this.defaultChain)
     } else if (options?.availableCatalog) {
       this.availableCatalog = new Set(
         options.availableCatalog

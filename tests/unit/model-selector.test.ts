@@ -107,4 +107,16 @@ describe("Model Selector", () => {
     expect(selector.getFallbackModel("builder-core", [])).toBeNull()
     expect(() => selector.selectModelForRole("builder-core")).toThrow(/FREE_MODEL_UNAVAILABLE/)
   })
+
+  it("prefers the role chain ordering over raw discovery ordering", () => {
+    const selector = new ModelSelector({
+      availableCatalog: [
+        "opencode/ling-3.0-flash-fin-free",
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/nemotron-3.5-lightning-free"
+      ]
+    })
+    expect(selector.selectModelForRole("builder-core")).toBe("opencode/mimo-v2.6-flash-free")
+  })
+
 })

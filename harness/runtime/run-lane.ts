@@ -62,6 +62,8 @@ export async function runLane(
     maxAttempts: 3,
     requiresChanges: task.requires_changes === true,
     baseSha: task.base_sha,
+    completionResultPath: resultPath,
+    requireCompletionResult: true,
     agentEnv: {
       TASK_PATH: taskPath,
       RESULT_PATH: resultPath,

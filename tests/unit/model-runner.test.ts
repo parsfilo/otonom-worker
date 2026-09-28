@@ -379,4 +379,60 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     expect(result.attempts).toHaveLength(2)
   })
 
+
+  it("Test 11: process PASS without complete_lane result falls back to another free model", async () => {
+    const repoDir = path.join(tempDir, "completion-result")
+    const controlDir = path.join(tempDir, "completion-control")
+    const resultPath = path.join(controlDir, "result.json")
+    fs.mkdirSync(repoDir, { recursive: true })
+    fs.mkdirSync(controlDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: repoDir, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf-8" }).trim()
+    let calls = 0
+
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      baseSha,
+      requiresChanges: true,
+      completionResultPath: resultPath,
+      requireCompletionResult: true,
+      runnerFactory: () => ({
+        run: async () => {
+          calls++
+          fs.writeFileSync(path.join(repoDir, "work.txt"), `attempt-${calls}\n`)
+          if (calls === 2) {
+            fs.writeFileSync(resultPath, JSON.stringify({
+              task_id: "lane-completion",
+              lane: "lane-completion",
+              status: "PASS"
+            }))
+          }
+          return {
+            exitCode: 0,
+            status: "PASS" as const,
+            durationMs: 1,
+            timedOut: false,
+            stalled: false,
+            stdoutPath: "",
+            stderrPath: "",
+            sanitizedSummary: "process exited"
+          }
+        }
+      }),
+      maxAttempts: 2
+    })
+
+    const result = await executor.executeLane("lane-completion", "builder-core")
+    expect(result.success).toBe(true)
+    expect(calls).toBe(2)
+    expect(result.attempts[0].errorCategory).toBe("RESULT_MISSING")
+    expect(result.attempts[1].status).toBe("PASS")
+  })
+
 })

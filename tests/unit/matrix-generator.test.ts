@@ -115,4 +115,23 @@ describe("Matrix Generator", () => {
       })
     }).toThrow(/No tasks matched filter/i)
   })
+
+  it("preserves requires_changes in generated matrix metadata", () => {
+    const task: any = {
+      id: "mutation-lane",
+      title: "Mutation lane",
+      role: "builder-core",
+      source_repository: "oaslananka/otonom",
+      base_sha: "0123456789abcdef0123456789abcdef01234567",
+      objectives: ["change file"],
+      allowed_write_paths: ["docs/**"],
+      acceptance_criteria: ["file changed"],
+      verification_profile: "lane",
+      risk_classification: "LOW",
+      requires_changes: true
+    }
+    const result = generateMatrix({ tasks: [task], maxParallel: 1 })
+    expect(result.matrix.include[0].requires_changes).toBe(true)
+  })
+
 })

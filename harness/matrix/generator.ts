@@ -91,7 +91,8 @@ export function generateMatrix(input: MatrixGenerationInput): MatrixOutput {
     base_sha: t.base_sha,
     verification_profile: t.verification_profile,
     timeout_minutes: t.timeout_minutes ?? 30,
-    risk_classification: t.risk_classification
+    risk_classification: t.risk_classification,
+    requires_changes: t.requires_changes
   }))
 
   return {

@@ -3,6 +3,7 @@ import { AgentRunner, AgentRunResult, AgentExecutionStatus } from "./agent-runne
 import { CapabilityRuntimeManager, OPENCODE_COMMAND, opencodeArgs } from "./capability-runtime.js"
 import { GitChangeDetector } from "../finalizer/git-detector.js"
 import path from "node:path"
+import fs from "node:fs"
 
 export interface ModelExecutorOptions {
   selector?: ModelSelector
@@ -15,6 +16,8 @@ export interface ModelExecutorOptions {
   agentEnv?: Record<string, string>
   requiresChanges?: boolean
   baseSha?: string
+  completionResultPath?: string
+  requireCompletionResult?: boolean
 }
 
 export interface ModelExecutionAttempt {
@@ -44,6 +47,8 @@ export class ModelExecutor {
   private agentEnv: Record<string, string>
   private requiresChanges: boolean
   private baseSha?: string
+  private completionResultPath?: string
+  private requireCompletionResult: boolean
 
   constructor(options: ModelExecutorOptions = {}) {
     this.selector = options.selector || new ModelSelector()
@@ -56,6 +61,8 @@ export class ModelExecutor {
     this.agentEnv = options.agentEnv || {}
     this.requiresChanges = options.requiresChanges === true
     this.baseSha = options.baseSha
+    this.completionResultPath = options.completionResultPath
+    this.requireCompletionResult = options.requireCompletionResult === true
   }
 
   public async executeLane(
@@ -90,6 +97,10 @@ export class ModelExecutor {
       }
 
       attemptedModels.push(model)
+
+      if (this.completionResultPath && fs.existsSync(this.completionResultPath)) {
+        fs.rmSync(this.completionResultPath, { force: true })
+      }
 
       let runner: { run: () => Promise<AgentRunResult> }
       if (this.runnerFactory) {
@@ -156,6 +167,31 @@ export class ModelExecutor {
         }
       }
 
+      if (runResult.status === "PASS" && this.requireCompletionResult) {
+        let completionOk = false
+        if (this.completionResultPath && fs.existsSync(this.completionResultPath)) {
+          try {
+            const parsed = JSON.parse(fs.readFileSync(this.completionResultPath, "utf-8"))
+            completionOk =
+              parsed?.status === "PASS" &&
+              parsed?.task_id === laneId &&
+              parsed?.lane === laneId
+          } catch {
+            completionOk = false
+          }
+        }
+        if (!completionOk) {
+          runResult = {
+            ...runResult,
+            status: "FAIL",
+            errorCategory: this.completionResultPath && fs.existsSync(this.completionResultPath)
+              ? "COMPLETION_CONTRACT_FAILED"
+              : "RESULT_MISSING",
+            sanitizedSummary: `[OTONOM-HARNESS] Lane '${laneId}' did not produce a valid PASS completion result.`
+          }
+        }
+      }
+
       this.selector.recordAttempt(laneId, role, model, runResult.status)
       attempts.push({
         model,
@@ -180,7 +216,9 @@ export class ModelExecutor {
         runResult.status === "UNAVAILABLE" ||
         runResult.errorCategory === "PROCESS_ERROR" ||
         runResult.errorCategory === "MODEL_UNAVAILABLE" ||
-        runResult.errorCategory === "NO_WORK_PRODUCT"
+        runResult.errorCategory === "NO_WORK_PRODUCT" ||
+        runResult.errorCategory === "RESULT_MISSING" ||
+        runResult.errorCategory === "COMPLETION_CONTRACT_FAILED"
 
       if (isTransientOrInfrastructure && i + 1 < this.maxAttempts) {
         continue
