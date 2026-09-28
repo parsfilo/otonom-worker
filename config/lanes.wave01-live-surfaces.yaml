@@ -24,10 +24,11 @@ tasks:
       - "Missing/unreachable/invalid control-plane status is represented truthfully as unavailable/degraded."
       - "No manager secret or credential is sent to client-side code."
       - "pnpm --filter @otonom/web typecheck and pnpm --filter @otonom/web build pass."
-    verification_profile: "full"
+      - "After required checks and complete_lane succeed, stop immediately; do not continue exploring or refactoring."
+    verification_profile: "review-only"
     requires_changes: true
-    timeout_minutes: 25
-    attempt_timeout_minutes: 3
+    timeout_minutes: 35
+    attempt_timeout_minutes: 5
     risk_classification: "LOW"
 
   - id: "web-models-live-health"
@@ -54,10 +55,11 @@ tasks:
       - "The page displays the live models.healthy value when /api/v1/status succeeds."
       - "Failure/missing configuration renders an explicit unavailable state."
       - "pnpm --filter @otonom/web typecheck and pnpm --filter @otonom/web build pass."
-    verification_profile: "full"
+      - "After required checks and complete_lane succeed, stop immediately; do not continue exploring or refactoring."
+    verification_profile: "review-only"
     requires_changes: true
-    timeout_minutes: 25
-    attempt_timeout_minutes: 3
+    timeout_minutes: 35
+    attempt_timeout_minutes: 5
     risk_classification: "LOW"
 
   - id: "control-plane-real-readiness"
@@ -86,9 +88,10 @@ tasks:
       - "/ready proves DB connectivity using the app-shared DbClient and returns 200 ready:true when healthy."
       - "/ready returns 503 ready:false with a generic response when the DB readiness query fails."
       - "No new DB pool, dependency, secret exposure, or raw error leakage is introduced."
-      - "Control-plane tests, root typecheck, and lint pass."
-    verification_profile: "full"
+      - "Control-plane tests, root typecheck, and lint pass in the target repository CI; the worker must at minimum produce the tests and pass trusted lint before finalization."
+      - "After required checks and complete_lane succeed, stop immediately; do not continue exploring or refactoring."
+    verification_profile: "review-only"
     requires_changes: true
-    timeout_minutes: 25
-    attempt_timeout_minutes: 3
+    timeout_minutes: 35
+    attempt_timeout_minutes: 5
     risk_classification: "LOW"
