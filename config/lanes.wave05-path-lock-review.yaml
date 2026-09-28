@@ -1,0 +1,52 @@
+tasks:
+  - id: "path-lock-concurrency-review"
+    title: "Review durable production path locks for concurrency and lifecycle correctness"
+    role: "reviewer-cross-system"
+    source_repository: "oaslananka/otonom"
+    base_sha: "b05ec6d7613c96bc879fd036155ac7ddf5b857c5"
+    objectives:
+      - "Review the existing feat/production-path-locks implementation at this exact SHA without modifying files."
+      - "Focus on repository-level advisory locking, overlap detection, re-entrant acquisition, stale/expired locks, worker lease renewal, cleanup ordering, crash/retry behavior, and cross-run concurrency races."
+      - "Inspect only source and tests necessary to substantiate findings; do not propose architecture expansion."
+      - "Use record_finding for every concrete correctness or security issue with exact file/evidence. If no concrete issue is found, complete with no findings."
+      - "Do not mutate repository files, run package-manager commands, or call external network tools."
+    allowed_write_paths:
+      - "docs/**"
+    forbidden_write_paths:
+      - "**"
+    acceptance_criteria:
+      - "No repository files are changed."
+      - "Every finding is source-backed and tied to a concrete failure mode, not style preference."
+      - "Review explicitly covers acquisition race, lease expiry/renewal, cleanup release, and crash/retry semantics."
+      - "Call complete_lane after review is finished."
+    verification_profile: "target-ci"
+    requires_changes: false
+    timeout_minutes: 20
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "path-lock-dispatch-review"
+    title: "Review durable production path locks for dispatch and outbox semantics"
+    role: "integration-reviewer"
+    source_repository: "oaslananka/otonom"
+    base_sha: "b05ec6d7613c96bc879fd036155ac7ddf5b857c5"
+    objectives:
+      - "Review the existing feat/production-path-locks implementation at this exact SHA without modifying files."
+      - "Focus on Director.createWork, dispatch outbox claim/defer/failure accounting, orchestrator provisioning side effects, retry idempotency, cleanup, and worker bootstrap/heartbeat authority."
+      - "Check that expected lock contention does not burn retry budget and that real failures still do; check that no external side effect happens before the lock gate."
+      - "Use record_finding for every concrete correctness/security issue with exact file/evidence. If no concrete issue is found, complete with no findings."
+      - "Do not mutate repository files, run package-manager commands, or call external network tools."
+    allowed_write_paths:
+      - "docs/**"
+    forbidden_write_paths:
+      - "**"
+    acceptance_criteria:
+      - "No repository files are changed."
+      - "Every finding is source-backed and tied to a concrete failure mode."
+      - "Review explicitly covers contention deferral, failure accounting, idempotent retries, and pre-side-effect lock ordering."
+      - "Call complete_lane after review is finished."
+    verification_profile: "target-ci"
+    requires_changes: false
+    timeout_minutes: 20
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
