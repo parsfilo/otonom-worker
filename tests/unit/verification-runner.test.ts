@@ -65,6 +65,7 @@ describe("Verification Runner & Completion Gate", () => {
       "DOPPLER_TOKEN",
       "OTONOM_SOURCE_CLONE_TOKEN",
       "OTONOM_TARGET_WRITE_TOKEN",
+      "OPENCODE_API_KEY",
       "VERIFICATION_ENV_CAPTURE"
     ] as const
     const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]))
@@ -73,6 +74,7 @@ describe("Verification Runner & Completion Gate", () => {
     process.env.DOPPLER_TOKEN = "fake-doppler-token"
     process.env.OTONOM_SOURCE_CLONE_TOKEN = "fake-source-token"
     process.env.OTONOM_TARGET_WRITE_TOKEN = "fake-write-token"
+    process.env.OPENCODE_API_KEY = "fake-opencode-provider-key"
     process.env.VERIFICATION_ENV_CAPTURE = capturePath
 
     try {
@@ -80,7 +82,7 @@ describe("Verification Runner & Completion Gate", () => {
         cwd: tempDir,
         customProfiles: {
           capture:
-            `node -e "require('node:fs').writeFileSync(process.env.VERIFICATION_ENV_CAPTURE, JSON.stringify({ doppler: process.env.DOPPLER_TOKEN, source: process.env.OTONOM_SOURCE_CLONE_TOKEN, write: process.env.OTONOM_TARGET_WRITE_TOKEN, path: process.env.PATH }))"`
+            `node -e "require('node:fs').writeFileSync(process.env.VERIFICATION_ENV_CAPTURE, JSON.stringify({ doppler: process.env.DOPPLER_TOKEN, source: process.env.OTONOM_SOURCE_CLONE_TOKEN, write: process.env.OTONOM_TARGET_WRITE_TOKEN, opencode: process.env.OPENCODE_API_KEY, path: process.env.PATH }))"`
         }
       })
 
@@ -90,6 +92,7 @@ describe("Verification Runner & Completion Gate", () => {
       expect(captured).not.toHaveProperty("doppler")
       expect(captured).not.toHaveProperty("source")
       expect(captured).not.toHaveProperty("write")
+      expect(captured).not.toHaveProperty("opencode")
       expect(captured.path).toContain(expectedPath || "")
     } finally {
       for (const name of names) {

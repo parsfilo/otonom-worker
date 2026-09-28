@@ -173,8 +173,14 @@ jobs:
           pnpm tsx harness/runtime/bootstrap-cli.ts "$CONTROL_DIR/task.json" "$TARGET_DIR"
 
       - name: Run OpenCode Agent Headless
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
+          OPENCODE_API_KEY="$(doppler secrets get OPENCODE_API_KEY --plain)"
+          echo "::add-mask::$OPENCODE_API_KEY"
+          export OPENCODE_API_KEY
           pnpm tsx harness/runtime/run-lane.ts "$CONTROL_DIR/task.json" "$CONTROL_DIR" "$PRIVATE_DIR" "$TARGET_DIR"
+          unset OPENCODE_API_KEY
 
       - name: Execute Trusted Finalizer
         env:

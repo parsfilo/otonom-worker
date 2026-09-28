@@ -19,7 +19,8 @@ describe("Policies", () => {
         ACTIONS_ID_TOKEN_REQUEST_URL: "https://actions.github.com/token",
         AWS_SECRET_ACCESS_KEY: "secret123",
         DATABASE_URL: "postgres://user:pass@localhost:5432/db",
-        PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----"
+        PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----",
+        OPENCODE_API_KEY: "oc-provider-secret"
       }
 
       const cleanEnv = sanitizeEnv(inputEnv)
@@ -36,6 +37,7 @@ describe("Policies", () => {
       expect(cleanEnv.AWS_SECRET_ACCESS_KEY).toBeUndefined()
       expect(cleanEnv.DATABASE_URL).toBeUndefined()
       expect(cleanEnv.PRIVATE_KEY).toBeUndefined()
+      expect(cleanEnv.OPENCODE_API_KEY).toBeUndefined()
 
       // Mandatory CI settings
       expect(cleanEnv.CI).toBe("1")
