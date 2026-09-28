@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
+import { execFileSync } from "node:child_process"
 import { VerificationRunner, VerificationProfile } from "../../harness/verification/runner.js"
 import { evaluateLaneCompletion } from "../../harness/verification/completion-gate.js"
 
@@ -45,6 +46,23 @@ describe("Verification Runner & Completion Gate", () => {
     expect(result.exit_code).toBe(0)
     expect(result.passed).toBe(true)
     expect(result.duration_ms).toBeGreaterThanOrEqual(0)
+  })
+
+  it("target-ci performs trusted diff hygiene without invoking the target package manager", async () => {
+    execFileSync("git", ["init"], { cwd: tempDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: tempDir })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: tempDir })
+    fs.writeFileSync(path.join(tempDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: tempDir })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: tempDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(tempDir, "README.md"), "changed\n")
+
+    const runner = new VerificationRunner({ cwd: tempDir })
+    const result = await runner.runProfile("target-ci")
+
+    expect(result.command).toBe("git diff --check")
+    expect(result.passed).toBe(true)
+    expect(result.exit_code).toBe(0)
   })
 
   it("handles failing command with passed = false", async () => {

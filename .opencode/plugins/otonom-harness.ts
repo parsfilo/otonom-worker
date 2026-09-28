@@ -28,6 +28,10 @@ function isDependencyMutationCommand(command: string): boolean {
   return /(?:^|[;&|\n]\s*)(?:pnpm\s+(?:i|install|add|remove|rm|update|up|import)|npm\s+(?:i|install|uninstall|remove|update)|yarn\s+(?:install|add|remove|up|upgrade)|bun\s+(?:install|add|remove|update))\b/i.test(command)
 }
 
+function isPackageManagerCommand(command: string): boolean {
+  return /(?:^|[;&|\n]\s*)(?:(?:command|env)\s+)?(?:pnpm|npm|yarn|bun|npx|corepack)\b/i.test(command)
+}
+
 const DEPENDENCY_CONTROL_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
@@ -201,6 +205,12 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
         if (!evalResult.allowed) {
           logger.logPrivateDiagnostic(`[CommandPolicy] BLOCKED: ${command} (${evalResult.reason})`)
           throw new Error(`Command blocked by harness security policy: ${evalResult.reason}`)
+        }
+        if (task?.verification_profile === "target-ci" && isPackageManagerCommand(command)) {
+          logger.logPrivateDiagnostic("[CommandPolicy] BLOCKED package-manager execution for target-ci lane")
+          throw new Error(
+            "Package-manager execution blocked for target-ci lane: target repository PR CI owns dependency-backed verification."
+          )
         }
         if (task && isDependencyMutationCommand(command)) {
           const dependencyWriteOwned = DEPENDENCY_CONTROL_PATHS.some((candidate) =>

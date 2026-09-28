@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process"
 import { sanitizeEnv } from "../policies/env-policy.js"
 
-export type VerificationProfile = "targeted" | "lane" | "full" | "review-only" | string
+export type VerificationProfile = "targeted" | "lane" | "full" | "review-only" | "target-ci" | string
 
 export interface VerificationResult {
   profile: string
@@ -24,6 +24,7 @@ const DEFAULT_PROFILES: Record<string, string> = {
   lane: "pnpm test",
   full: "pnpm test && pnpm typecheck && pnpm lint",
   "review-only": "pnpm lint",
+  "target-ci": "git diff --check",
   "smoke-doc": "node -e \"const fs = require('fs'); const p = 'docs/swarm-smoke/phase2-harness-validation.md'; if (!fs.existsSync(p)) process.exit(1); const s = fs.statSync(p); if (!s.isFile() || s.size > 10240) process.exit(1); process.exit(0)\" && git diff --check"
 }
 

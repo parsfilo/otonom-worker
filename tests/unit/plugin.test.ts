@@ -259,6 +259,29 @@ describe("OpenCode Otonom Harness Plugin", () => {
   })
 
 
+  it("blocks all package-manager execution for target-ci lanes while allowing git diff hygiene", async () => {
+    fs.writeFileSync(
+      taskPath,
+      JSON.stringify({ ...mockTask, verification_profile: "target-ci" }, null, 2)
+    )
+    const plugin: any = createOtonomPlugin({ taskPath, workspaceRoot: tempDir })
+
+    await expect(
+      plugin.hooks["tool.execute.before"](
+        { tool: "bash" },
+        { args: { command: "pnpm --filter @otonom/web typecheck" } }
+      )
+    ).rejects.toThrow("Package-manager execution blocked for target-ci lane")
+
+    await expect(
+      plugin.hooks["tool.execute.before"](
+        { tool: "bash" },
+        { args: { command: "git diff --check" } }
+      )
+    ).resolves.not.toThrow()
+  })
+
+
   it("blocks dependency-mutating package-manager commands when lockfiles are outside lane ownership", async () => {
     const plugin: any = createOtonomPlugin({ taskPath, workspaceRoot: tempDir })
     await expect(

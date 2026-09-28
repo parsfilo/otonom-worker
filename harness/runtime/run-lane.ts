@@ -23,6 +23,11 @@ export function buildTaskPrompt(task: any): string {
     `- Fulfill all task objectives directly; a textual explanation without the required repository changes is NOT completion.`,
     `- Before finishing, confirm the required work product exists, run the required verification profile, and call complete_lane.`,
     `- Do not run dependency-mutating package-manager commands (install/add/remove/update) unless package manifests/lockfiles are explicitly inside Allowed Write Paths.`,
+    ...(task.verification_profile === "target-ci"
+      ? [
+          `- This lane defers package-manager checks to the target repository PR CI. Do not run pnpm/npm/yarn/bun/npx/corepack commands; use run_verification for trusted diff hygiene, then call complete_lane.`
+        ]
+      : []),
     `- Do not attempt git push, gh PR commands, or network credential access.`
   ].join("\n")
 }
@@ -48,7 +53,7 @@ export async function reconcileTrustedLaneResult(input: {
     baseSha: task.base_sha || "HEAD"
   })
   const changeSummary = detector.detectChanges()
-  const changedPaths = changeSummary.actualChangedPaths
+  let changedPaths = changeSummary.actualChangedPaths
   const blockers: string[] = []
   const policyViolations: ReturnType<typeof resultViolation>[] = []
   let trustedVerification: VerificationResult | undefined
@@ -65,12 +70,24 @@ export async function reconcileTrustedLaneResult(input: {
     allowedWritePaths: task.allowed_write_paths || [],
     forbiddenWritePaths: task.forbidden_write_paths || []
   })
-  for (const changedPath of changedPaths) {
-    const check = ownership.checkPath(changedPath)
-    if (!check.allowed && check.violation) {
-      policyViolations.push(resultViolation(check.violation))
+  const collectPolicyViolations = (paths: string[]) => {
+    for (const changedPath of paths) {
+      const check = ownership.checkPath(changedPath)
+      if (
+        !check.allowed &&
+        check.violation &&
+        !policyViolations.some(
+          (violation) =>
+            violation.policy === check.violation!.policy &&
+            violation.target === check.violation!.target
+        )
+      ) {
+        policyViolations.push(resultViolation(check.violation))
+      }
     }
   }
+
+  collectPolicyViolations(changedPaths)
 
   if (policyViolations.length > 0) {
     blockers.push("OUT_OF_SCOPE_WORK_PRODUCT")
@@ -85,6 +102,18 @@ export async function reconcileTrustedLaneResult(input: {
       }
     } catch {
       blockers.push(`VERIFICATION_EXECUTION_FAILED:${task.verification_profile || "lane"}`)
+    }
+  }
+
+  if (trustedVerification) {
+    const postVerificationPaths = detector.detectChanges().actualChangedPaths
+    if (postVerificationPaths.join("\0") !== changedPaths.join("\0")) {
+      blockers.push("VERIFICATION_MUTATED_WORKSPACE")
+      changedPaths = postVerificationPaths
+      collectPolicyViolations(changedPaths)
+      if (policyViolations.length > 0 && !blockers.includes("OUT_OF_SCOPE_WORK_PRODUCT")) {
+        blockers.push("OUT_OF_SCOPE_WORK_PRODUCT")
+      }
     }
   }
 
