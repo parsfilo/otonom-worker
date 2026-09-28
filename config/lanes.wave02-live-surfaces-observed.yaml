@@ -1,0 +1,97 @@
+tasks:
+  - id: "web-dashboard-live-status"
+    title: "Replace dashboard sample operations data with truthful live control-plane status"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "c7c096af753f8cd2dd5f58b434e140e16484f803"
+    objectives:
+      - "Update only apps/web/src/app/page.tsx to fetch the existing public GET /api/v1/status endpoint using NEXT_PUBLIC_API_URL from the Next.js server component."
+      - "Use live controlPlane, workers.active, and models.healthy values; remove hardcoded operational counts and fake SYSTEM ONLINE / Neon connected claims."
+      - "Remove or replace fake Recent Task DAG and resource-pool operational rows with explicit truthful unavailable/not-yet-exposed messaging because no authenticated list API is part of this task."
+      - "Fail closed: if NEXT_PUBLIC_API_URL is missing, the response is non-2xx, or the payload is invalid, render an explicit unavailable/degraded state rather than fabricated healthy values."
+      - "Do not introduce browser-side manager credentials, new auth flows, dependencies, API routes, or shared client abstractions."
+    allowed_write_paths:
+      - "apps/web/src/app/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "Dashboard contains no fabricated worker/model/task/resource-pool operational counts."
+      - "Live status uses only the existing /api/v1/status contract and NEXT_PUBLIC_API_URL."
+      - "Missing/unreachable/invalid control-plane status is represented truthfully as unavailable/degraded."
+      - "No manager secret or credential is sent to client-side code."
+      - "pnpm --filter @otonom/web typecheck and pnpm --filter @otonom/web build pass."
+      - "After required checks and complete_lane succeed, stop immediately; do not continue exploring or refactoring."
+    verification_profile: "review-only"
+    requires_changes: true
+    timeout_minutes: 35
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-models-live-health"
+    title: "Replace fabricated model registry rows with truthful live model health aggregate"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "c7c096af753f8cd2dd5f58b434e140e16484f803"
+    objectives:
+      - "Update only apps/web/src/app/models/page.tsx to consume the existing public GET /api/v1/status endpoint via NEXT_PUBLIC_API_URL."
+      - "Remove fabricated model identifiers, provider routes, context windows, latency, errors, and circuit-breaker rows that are not supplied by the live API."
+      - "Render the live models.healthy aggregate and clearly state that per-model details are not exposed by the current live control-plane API."
+      - "Remove unwired Reset Circuit Breakers and Test Model Latency controls; do not invent mutation endpoints."
+      - "Fail closed with an explicit unavailable state when live status cannot be obtained."
+    allowed_write_paths:
+      - "apps/web/src/app/models/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated per-model operational rows or unwired action controls remain."
+      - "The page displays the live models.healthy value when /api/v1/status succeeds."
+      - "Failure/missing configuration renders an explicit unavailable state."
+      - "pnpm --filter @otonom/web typecheck and pnpm --filter @otonom/web build pass."
+      - "After required checks and complete_lane succeed, stop immediately; do not continue exploring or refactoring."
+    verification_profile: "review-only"
+    requires_changes: true
+    timeout_minutes: 35
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "control-plane-real-readiness"
+    title: "Make /ready a real database readiness probe without weakening /health liveness"
+    role: "builder-core"
+    source_repository: "oaslananka/otonom"
+    base_sha: "c7c096af753f8cd2dd5f58b434e140e16484f803"
+    objectives:
+      - "Replace the unconditional GET /ready success with a real lightweight PostgreSQL connectivity check against the same DbClient used by the app."
+      - "Keep GET /health a liveness endpoint that does not depend on database availability."
+      - "Wire the existing app DbClient into health route registration with the smallest change; do not create a new database pool."
+      - "Return HTTP 200 with ready:true on successful DB check and HTTP 503 with ready:false on DB failure; do not expose SQL, credentials, connection strings, or raw database errors."
+      - "Add regression tests covering successful readiness and fail-closed 503 behavior."
+    allowed_write_paths:
+      - "apps/control-plane/src/routes/health.ts"
+      - "apps/control-plane/src/server.ts"
+      - "apps/control-plane/src/server.test.ts"
+    forbidden_write_paths:
+      - "packages/database/**"
+      - "packages/orchestrator/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "/health remains HTTP 200 even though it performs no DB readiness query."
+      - "/ready proves DB connectivity using the app-shared DbClient and returns 200 ready:true when healthy."
+      - "/ready returns 503 ready:false with a generic response when the DB readiness query fails."
+      - "No new DB pool, dependency, secret exposure, or raw error leakage is introduced."
+      - "Control-plane tests, root typecheck, and lint pass in the target repository CI; the worker must at minimum produce the tests and pass trusted lint before finalization."
+      - "After required checks and complete_lane succeed, stop immediately; do not continue exploring or refactoring."
+    verification_profile: "review-only"
+    requires_changes: true
+    timeout_minutes: 35
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
