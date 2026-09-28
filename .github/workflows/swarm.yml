@@ -145,6 +145,39 @@ jobs:
           uv --version
           uvx --version
 
+      - name: Probe Anonymous OpenCode Free Tier
+        if: ${{ github.event.inputs.manifest_path == 'config/lanes.phase2-smoke.yaml' }}
+        shell: bash
+        run: |
+          PROBE_HOME="$RUNNER_TEMP/opencode-anon-probe"
+          PROBE_OUT="$RUNNER_TEMP/opencode-anon-probe.out"
+          PROBE_ERR="$RUNNER_TEMP/opencode-anon-probe.err"
+          rm -rf "$PROBE_HOME" "$PROBE_OUT" "$PROBE_ERR"
+          mkdir -p "$PROBE_HOME"
+
+          set +e
+          timeout 50s env             HOME="$PROBE_HOME"             XDG_CONFIG_HOME="$PROBE_HOME/.config"             XDG_DATA_HOME="$PROBE_HOME/.local/share"             opencode run -m opencode/mimo-v2.6-flash-free --auto "Reply exactly OK"             >"$PROBE_OUT" 2>"$PROBE_ERR"
+          rc=$?
+          set -e
+
+          if [ "$rc" -eq 0 ]; then
+            echo "anonymous_free_tier_probe=PASS"
+          elif [ "$rc" -eq 124 ]; then
+            echo "anonymous_free_tier_probe=TIMEOUT"
+          elif grep -Eiq 'free tier can only be used from within opencode' "$PROBE_ERR" "$PROBE_OUT"; then
+            echo "anonymous_free_tier_probe=FREE_TIER_CLIENT_GATE"
+          elif grep -Eiq 'unauthorized|authentication required|api.?key|credential' "$PROBE_ERR" "$PROBE_OUT"; then
+            echo "anonymous_free_tier_probe=AUTH_REJECTED"
+          elif grep -Eiq '429|rate.?limit|quota' "$PROBE_ERR" "$PROBE_OUT"; then
+            echo "anonymous_free_tier_probe=RATE_LIMITED"
+          elif grep -Eiq 'upstream request failed|unavailable|bad gateway|gateway timeout|503|502|504' "$PROBE_ERR" "$PROBE_OUT"; then
+            echo "anonymous_free_tier_probe=UPSTREAM_UNAVAILABLE"
+          else
+            echo "anonymous_free_tier_probe=UNKNOWN_NONZERO"
+          fi
+
+          rm -rf "$PROBE_HOME" "$PROBE_OUT" "$PROBE_ERR"
+
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
 
