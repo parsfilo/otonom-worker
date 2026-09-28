@@ -109,6 +109,12 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       input: { tool: string; sessionID?: string; callID?: string },
       output: { args: any }
     ) => {
+      // Safe diagnostic metadata only: never record args, source, prompts or tool output.
+      logger.logPrivateTelemetry({
+        phase: "before",
+        tool: input.tool
+      })
+
       if (BLOCKED_TOOLS.has(input.tool)) {
         throw new Error(`Tool blocked by harness security policy: ${input.tool}`)
       }
@@ -173,6 +179,7 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
     ) => {
       const outStr = typeof output.output === "string" ? output.output : JSON.stringify(output.output || "")
       logger.logPrivateTelemetry({
+        phase: "after",
         tool: input.tool,
         outputLength: outStr.length,
         truncated: outStr.length > 2000,
@@ -214,9 +221,12 @@ ${task.acceptance_criteria.map((c: string) => `  * ${c}`).join("\n")}
       }
       if (event.type === "session.idle") {
         logger.logPrivateDiagnostic("[Session] Received session.idle event")
+        logger.logPrivateTelemetry({ phase: "event", event: "session.idle" })
       }
       if (event.type === "session.error") {
-        logger.logPrivateDiagnostic(`[Session Error] Error event received: ${event.error?.name || "unspecified"}`)
+        const errorName = event.error?.name || "unspecified"
+        logger.logPrivateDiagnostic(`[Session Error] Error event received: ${errorName}`)
+        logger.logPrivateTelemetry({ phase: "event", event: "session.error", errorName })
       }
     }
   }

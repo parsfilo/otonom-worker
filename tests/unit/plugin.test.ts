@@ -61,6 +61,37 @@ describe("OpenCode Otonom Harness Plugin", () => {
     expect(output.env.GIT_TERMINAL_PROMPT).toBe("0")
   })
 
+  it("records sanitized tool-attempt telemetry without tool arguments", async () => {
+    const plugin = createOtonomPlugin({
+      taskPath,
+      workspaceRoot: tempDir,
+      runnerTemp
+    })
+
+    await plugin.hooks["tool.execute.before"](
+      { tool: "read" },
+      { args: { filePath: "src/webhooks/private.ts", secret: "do-not-log" } }
+    )
+    await plugin.hooks["tool.execute.after"](
+      { tool: "read", args: { filePath: "src/webhooks/private.ts" } },
+      { output: "private source content" }
+    )
+
+    const telemetryPath = path.join(
+      runnerTemp,
+      "otonom-private",
+      mockTask.id,
+      "telemetry.jsonl"
+    )
+    const telemetry = fs.readFileSync(telemetryPath, "utf-8")
+    expect(telemetry).toContain('"phase":"before"')
+    expect(telemetry).toContain('"phase":"after"')
+    expect(telemetry).toContain('"tool":"read"')
+    expect(telemetry).not.toContain("private.ts")
+    expect(telemetry).not.toContain("do-not-log")
+    expect(telemetry).not.toContain("private source content")
+  })
+
   it("tool.execute.before blocks git push command", async () => {
     const plugin = createOtonomPlugin({
       taskPath,

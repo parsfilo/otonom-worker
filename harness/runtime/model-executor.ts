@@ -37,6 +37,64 @@ export interface ModelExecutionResult {
   error?: string
 }
 
+
+interface AttemptTelemetrySummary {
+  events: number
+  attempted: Map<string, number>
+  completed: Map<string, number>
+  sessionErrors: number
+}
+
+function countByTool(events: Array<Record<string, unknown>>, phase: string): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const event of events) {
+    if (event.phase !== phase || typeof event.tool !== "string") continue
+    counts.set(event.tool, (counts.get(event.tool) || 0) + 1)
+  }
+  return counts
+}
+
+function readAttemptTelemetry(telemetryPath: string, startOffset: number): AttemptTelemetrySummary {
+  if (!fs.existsSync(telemetryPath)) {
+    return { events: 0, attempted: new Map(), completed: new Map(), sessionErrors: 0 }
+  }
+
+  const content = fs.readFileSync(telemetryPath).subarray(startOffset).toString("utf-8")
+  const events: Array<Record<string, unknown>> = []
+  for (const line of content.split("\n")) {
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line)
+      if (parsed && typeof parsed === "object") events.push(parsed)
+    } catch {
+      // Ignore malformed private telemetry; diagnostics must never affect execution.
+    }
+  }
+
+  return {
+    events: events.length,
+    attempted: countByTool(events, "before"),
+    completed: countByTool(events, "after"),
+    sessionErrors: events.filter((event) => event.phase === "event" && event.event === "session.error").length
+  }
+}
+
+function formatToolCounts(counts: Map<string, number>): string {
+  if (counts.size === 0) return "none"
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([tool, count]) => `${tool}:${count}`)
+    .join(",")
+}
+
+function fileSizeOrZero(filePath: string): number {
+  try {
+    return fs.statSync(filePath).size
+  } catch {
+    return 0
+  }
+}
+
 export class ModelExecutor {
   private selector: ModelSelector
   private runnerFactory?: (model: string) => { run: () => Promise<AgentRunResult> }
@@ -104,6 +162,9 @@ export class ModelExecutor {
       if (this.completionResultPath && fs.existsSync(this.completionResultPath)) {
         fs.rmSync(this.completionResultPath, { force: true })
       }
+
+      const telemetryPath = path.join(this.privateDir, "telemetry.jsonl")
+      const telemetryStartOffset = fileSizeOrZero(telemetryPath)
 
       let runner: { run: () => Promise<AgentRunResult> }
       if (this.runnerFactory) {
@@ -212,6 +273,46 @@ export class ModelExecutor {
           }
         }
       }
+
+      const telemetry = readAttemptTelemetry(telemetryPath, telemetryStartOffset)
+      const changedPathCount = this.workspaceDir
+        ? new GitChangeDetector({
+            workspaceRoot: this.workspaceDir,
+            baseSha: this.baseSha || "HEAD"
+          }).detectChanges().actualChangedPaths.length
+        : 0
+      const completionResultPresent =
+        this.completionResultPath !== undefined && fs.existsSync(this.completionResultPath)
+      const mutationAttempted =
+        (telemetry.attempted.get("write") || 0) +
+          (telemetry.attempted.get("edit") || 0) +
+          (telemetry.attempted.get("patch") || 0) >
+        0
+      const mutationCompleted =
+        (telemetry.completed.get("write") || 0) +
+          (telemetry.completed.get("edit") || 0) +
+          (telemetry.completed.get("patch") || 0) >
+        0
+
+      console.log(
+        [
+          "[ModelExecutor Diagnostic]",
+          `lane=${laneId}`,
+          `attempt=${i + 1}`,
+          `events=${telemetry.events}`,
+          `tools_attempted=${formatToolCounts(telemetry.attempted)}`,
+          `tools_completed=${formatToolCounts(telemetry.completed)}`,
+          `mutation_attempted=${mutationAttempted}`,
+          `mutation_completed=${mutationCompleted}`,
+          `verification_completed=${(telemetry.completed.get("run_verification") || 0) > 0}`,
+          `completion_completed=${(telemetry.completed.get("complete_lane") || 0) > 0}`,
+          `session_errors=${telemetry.sessionErrors}`,
+          `result_present=${completionResultPresent}`,
+          `changed_path_count=${changedPathCount}`,
+          `stdout_bytes=${fileSizeOrZero(runResult.stdoutPath)}`,
+          `stderr_bytes=${fileSizeOrZero(runResult.stderrPath)}`
+        ].join(" ")
+      )
 
       this.selector.recordAttempt(laneId, role, model, runResult.status)
       attempts.push({

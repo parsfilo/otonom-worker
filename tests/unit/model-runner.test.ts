@@ -202,6 +202,63 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     }
   })
 
+  it("Test 3c: emits bounded sanitized per-attempt tool diagnostics", async () => {
+    const telemetryPath = path.join(privateDir, "telemetry.jsonl")
+    const stdoutPath = path.join(privateDir, "diag.stdout")
+    const stderrPath = path.join(privateDir, "diag.stderr")
+    fs.writeFileSync(stdoutPath, "done")
+    fs.writeFileSync(stderrPath, "")
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    try {
+      const executor = new ModelExecutor({
+        selector: new ModelSelector({
+          availableCatalog: ["opencode/ling-3.0-flash-fin-free"]
+        }),
+        privateDir,
+        runnerFactory: () => ({
+          run: async () => {
+            fs.appendFileSync(
+              telemetryPath,
+              [
+                JSON.stringify({ phase: "before", tool: "task_context", timestamp: "x" }),
+                JSON.stringify({ phase: "after", tool: "task_context", outputLength: 10, timestamp: "x" }),
+                JSON.stringify({ phase: "before", tool: "write", timestamp: "x" }),
+                JSON.stringify({ phase: "event", event: "session.error", errorName: "TestError", timestamp: "x" })
+              ].join("\n") + "\n"
+            )
+            return {
+              exitCode: 0,
+              status: "PASS" as const,
+              durationMs: 10,
+              timedOut: false,
+              stalled: false,
+              stdoutPath,
+              stderrPath,
+              sanitizedSummary: "Passed"
+            }
+          }
+        }),
+        maxAttempts: 1
+      })
+
+      await executor.executeLane("lane-diagnostic", "builder-core")
+      const diagnostic = logSpy.mock.calls
+        .map((call) => String(call[0]))
+        .find((line) => line.startsWith("[ModelExecutor Diagnostic]"))
+
+      expect(diagnostic).toContain("tools_attempted=task_context:1,write:1")
+      expect(diagnostic).toContain("tools_completed=task_context:1")
+      expect(diagnostic).toContain("mutation_attempted=true")
+      expect(diagnostic).toContain("mutation_completed=false")
+      expect(diagnostic).toContain("session_errors=1")
+      expect(diagnostic).toContain("stdout_bytes=4")
+      expect(diagnostic).not.toContain("TestError")
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
   it("Test 4: unavailable model in catalog is skipped", async () => {
     const selector = new ModelSelector({
       availableCatalog: ["opencode/longcat-2.5-preview-free"]
