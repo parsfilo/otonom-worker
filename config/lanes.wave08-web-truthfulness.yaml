@@ -1,0 +1,102 @@
+tasks:
+  - id: "web-accounts-truthful-surface"
+    title: "Remove fabricated GitHub account and credential state from the web Accounts page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "6ca533a04cfc99b111c8f7d805321c2baa358944"
+    objectives:
+      - "Update only apps/web/src/app/accounts/page.tsx."
+      - "Remove fabricated GitHub account, user ID, credential, PAT capability/status, resolved email, worker-profile, and validation timestamp data."
+      - "Remove the raw PAT input and simulated client-side validation/encryption/storage flow, including random IDs and success messages that imply a credential was persisted."
+      - "Remove unwired Validate, Rotate, and Disable controls."
+      - "Render a truthful unavailable state explaining that live GitHub account/credential inventory and credential mutations are not exposed through the current public web-safe API contract."
+      - "Do not introduce tokens, browser credentials, manager auth, proxy routes, new endpoints, dependencies, fake accounts, or fake validation/encryption results."
+      - "Prefer a simple server component if client state is no longer needed."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/accounts/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated GitHub account, credential, PAT capability/status, or identity data remains."
+      - "No PAT input or simulated validation/encryption/storage behavior remains."
+      - "No unwired Validate/Rotate/Disable controls remain."
+      - "The page clearly states the current public web-safe account/credential API limitation."
+      - "No new auth workaround, endpoint, credential, dependency, or fake operational status is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-audit-truthful-surface"
+    title: "Remove fabricated audit records and integrity claims from the web Audit page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "6ca533a04cfc99b111c8f7d805321c2baa358944"
+    objectives:
+      - "Update only apps/web/src/app/audit/page.tsx."
+      - "Remove fabricated audit event IDs, event types, actors, targets, hashes, timestamps, and any live-looking execution history."
+      - "Remove the false live operational claim Hash Chaining: VERIFIED and any unsupported cryptographic-integrity/non-repudiation status."
+      - "Remove unwired Verify Cryptographic Integrity and Export Log Bundle controls."
+      - "Render a truthful unavailable state explaining that live audit-log listing, cryptographic integrity verification, and export are not exposed through the current public web-safe API contract."
+      - "Do not invent audit endpoints, manager auth, download handlers, hashes, signatures, verification results, or new dependencies."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/audit/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated audit records, hashes, actors, targets, or timestamps remain."
+      - "No unverified live claim that hash chaining or cryptographic integrity is currently verified remains."
+      - "No unwired integrity-verification or export controls remain."
+      - "The page clearly states the current public web-safe audit API limitation."
+      - "No new endpoint, auth workaround, fake integrity result, or dependency is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-fleet-truthful-surface"
+    title: "Remove fabricated worker fleet detail and unwired controls from the web Fleet page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "6ca533a04cfc99b111c8f7d805321c2baa358944"
+    objectives:
+      - "Update only apps/web/src/app/fleet/page.tsx."
+      - "Remove fabricated worker IDs, runner/OS data, roles, task assignments, lease durations, heartbeat ages, status, and per-worker write-permission claims."
+      - "Remove unwired Evict Expired Leases and Provision Ephemeral Worker controls."
+      - "Render a truthful unavailable state for detailed fleet/lease data and fleet mutations. The current public web-safe GET /api/v1/status exposes only aggregate workers.active, not per-worker identities, lease details, assignments, heartbeats, capabilities, or mutation endpoints."
+      - "Do not infer per-worker facts from workers.active, invent workers or lease health, expose manager credentials, add proxy/API routes, or add dependencies."
+      - "Do not present detailed zero-trust runtime posture as live fleet state when it cannot be verified through the public web-safe API."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/fleet/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated per-worker, lease, task, heartbeat, capability, or runtime-status data remains."
+      - "No unwired evict/provision controls remain."
+      - "The page distinguishes the public aggregate workers.active signal from unavailable per-worker fleet detail."
+      - "No manager credential, new endpoint, fake worker/lease data, or dependency is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
