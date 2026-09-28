@@ -279,9 +279,11 @@ describe("Model Selector & Execution Driver with Fallback", () => {
               [
                 JSON.stringify({ phase: "before", tool: "task_context", timestamp: "x" }),
                 JSON.stringify({ phase: "after", tool: "task_context", outputLength: 10, timestamp: "x" }),
-                JSON.stringify({ phase: "before", tool: "write", timestamp: "x" }),
-                JSON.stringify({ phase: "after", tool: "write", workspaceChangeCount: 1, timestamp: "x" }),
-                JSON.stringify({ phase: "after", tool: "bash", commandCategory: "git_clean", workspaceChangeCount: 0, timestamp: "x" }),
+                JSON.stringify({ phase: "before", tool: "write", workspaceChangeCount: 0, ownedChangeCount: 0, unownedChangeCount: 0, timestamp: "x" }),
+                JSON.stringify({ phase: "after", tool: "write", workspaceChangeCount: 1, ownedChangeCount: 1, unownedChangeCount: 0, timestamp: "x" }),
+                JSON.stringify({ phase: "before", tool: "bash", commandCategory: "git_clean", workspaceChangeCount: 1, ownedChangeCount: 1, unownedChangeCount: 0, timestamp: "x" }),
+                JSON.stringify({ phase: "event", event: "session.idle", pendingToolCount: 1, pendingMutationCount: 0, pendingOwnedMutationCount: 0, pendingBashCategories: ["git_clean"], workspaceChangeCount: 1, ownedChangeCount: 1, unownedChangeCount: 0, timestamp: "x" }),
+                JSON.stringify({ phase: "after", tool: "bash", commandCategory: "git_clean", workspaceChangeCount: 0, ownedChangeCount: 0, unownedChangeCount: 0, timestamp: "x" }),
                 JSON.stringify({ phase: "event", event: "session.error", errorName: "TestError", timestamp: "x" })
               ].join("\n") + "\n"
             )
@@ -305,12 +307,16 @@ describe("Model Selector & Execution Driver with Fallback", () => {
         .map((call) => String(call[0]))
         .find((line) => line.startsWith("[ModelExecutor Diagnostic]"))
 
-      expect(diagnostic).toContain("tools_attempted=task_context:1,write:1")
+      expect(diagnostic).toContain("tools_attempted=bash:1,task_context:1,write:1")
       expect(diagnostic).toContain("tools_completed=bash:1,task_context:1,write:1")
+      expect(diagnostic).toContain("bash_attempted=git_clean:1")
       expect(diagnostic).toContain("mutation_attempted=true")
       expect(diagnostic).toContain("mutation_completed=true")
       expect(diagnostic).toContain("session_errors=1")
-      expect(diagnostic).toContain("change_trace=write:1>bash[git_clean]:0")
+      expect(diagnostic).toContain("idle_pending_tools=1")
+      expect(diagnostic).toContain("idle_change_count=1")
+      expect(diagnostic).toContain("idle_owned_change_count=1")
+      expect(diagnostic).toContain("idle_pending_bash=git_clean")
       expect(diagnostic).toContain("stdout_bytes=4")
       expect(diagnostic).not.toContain("TestError")
     } finally {

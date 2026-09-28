@@ -123,6 +123,42 @@ describe("OpenCode Otonom Harness Plugin", () => {
     expect(telemetry).not.toContain("git status --short")
   })
 
+  it("records pending owned mutation state at session idle without leaking arguments", async () => {
+    const workspaceDir = path.join(tempDir, "idle-workspace")
+    fs.mkdirSync(workspaceDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: workspaceDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test"], { cwd: workspaceDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspaceDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(workspaceDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: workspaceDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: workspaceDir, stdio: "ignore" })
+    const owned = "src/webhooks/receiver.ts"
+    fs.mkdirSync(path.join(workspaceDir, "src", "webhooks"), { recursive: true })
+    fs.writeFileSync(
+      taskPath,
+      JSON.stringify({ ...mockTask, base_sha: "HEAD", allowed_write_paths: [owned] })
+    )
+
+    const plugin = createOtonomPlugin({ taskPath, workspaceRoot: workspaceDir, runnerTemp })
+    await plugin.hooks["tool.execute.before"](
+      { tool: "write", callID: "call-owned" },
+      { args: { filePath: owned, content: "secret-content-not-logged" } }
+    )
+    fs.writeFileSync(path.join(workspaceDir, owned), "work\n")
+    await plugin.hooks.event({ event: { type: "session.idle" } })
+
+    const telemetry = fs.readFileSync(
+      path.join(runnerTemp, "otonom-private", mockTask.id, "telemetry.jsonl"),
+      "utf-8"
+    )
+    expect(telemetry).toContain('"event":"session.idle"')
+    expect(telemetry).toContain('"pendingToolCount":1')
+    expect(telemetry).toContain('"pendingMutationCount":1')
+    expect(telemetry).toContain('"pendingOwnedMutationCount":1')
+    expect(telemetry).toContain('"ownedChangeCount":1')
+    expect(telemetry).not.toContain("secret-content-not-logged")
+  })
+
   it("tool.execute.before blocks git push command", async () => {
     const plugin = createOtonomPlugin({
       taskPath,

@@ -42,8 +42,18 @@ interface AttemptTelemetrySummary {
   events: number
   attempted: Map<string, number>
   completed: Map<string, number>
+  attemptedBashCategories: Map<string, number>
   sessionErrors: number
   changeTrace: string[]
+  idleState?: {
+    pendingToolCount: number
+    pendingMutationCount: number
+    pendingOwnedMutationCount: number
+    workspaceChangeCount: number
+    ownedChangeCount: number
+    unownedChangeCount: number
+    pendingBashCategories: string[]
+  }
 }
 
 function countByTool(events: Array<Record<string, unknown>>, phase: string): Map<string, number> {
@@ -57,7 +67,14 @@ function countByTool(events: Array<Record<string, unknown>>, phase: string): Map
 
 function readAttemptTelemetry(telemetryPath: string, startOffset: number): AttemptTelemetrySummary {
   if (!fs.existsSync(telemetryPath)) {
-    return { events: 0, attempted: new Map(), completed: new Map(), sessionErrors: 0, changeTrace: [] }
+    return {
+      events: 0,
+      attempted: new Map(),
+      completed: new Map(),
+      attemptedBashCategories: new Map(),
+      sessionErrors: 0,
+      changeTrace: []
+    }
   }
 
   const content = fs.readFileSync(telemetryPath).subarray(startOffset).toString("utf-8")
@@ -75,25 +92,68 @@ function readAttemptTelemetry(telemetryPath: string, startOffset: number): Attem
   const changeTrace = events
     .filter(
       (event) =>
-        event.phase === "after" &&
-        typeof event.tool === "string" &&
-        typeof event.workspaceChangeCount === "number"
+        ["before", "after", "event"].includes(String(event.phase)) &&
+        (typeof event.workspaceChangeCount === "number" || event.event === "session.idle")
     )
-    .slice(0, 32)
+    .slice(0, 64)
     .map((event) => {
+      if (event.phase === "event") {
+        return [
+          "idle",
+          String(event.workspaceChangeCount ?? -1),
+          String(event.ownedChangeCount ?? -1),
+          String(event.unownedChangeCount ?? -1),
+          "p" + String(event.pendingToolCount ?? -1),
+          "m" + String(event.pendingMutationCount ?? -1)
+        ].join(":")
+      }
       const category =
         event.tool === "bash" && typeof event.commandCategory === "string"
           ? "[" + event.commandCategory + "]"
           : ""
-      return String(event.tool) + category + ":" + String(event.workspaceChangeCount)
+      return [
+        String(event.phase),
+        String(event.tool),
+        category,
+        String(event.workspaceChangeCount ?? -1),
+        String(event.ownedChangeCount ?? -1),
+        String(event.unownedChangeCount ?? -1)
+      ].join(":")
     })
+
+  const attemptedBashCategories = new Map<string, number>()
+  for (const event of events) {
+    if (event.phase !== "before" || event.tool !== "bash" || typeof event.commandCategory !== "string") continue
+    attemptedBashCategories.set(
+      event.commandCategory,
+      (attemptedBashCategories.get(event.commandCategory) || 0) + 1
+    )
+  }
+
+  const idle = [...events]
+    .reverse()
+    .find((event) => event.phase === "event" && event.event === "session.idle")
 
   return {
     events: events.length,
     attempted: countByTool(events, "before"),
     completed: countByTool(events, "after"),
+    attemptedBashCategories,
     sessionErrors: events.filter((event) => event.phase === "event" && event.event === "session.error").length,
-    changeTrace
+    changeTrace,
+    idleState: idle
+      ? {
+          pendingToolCount: Number(idle.pendingToolCount || 0),
+          pendingMutationCount: Number(idle.pendingMutationCount || 0),
+          pendingOwnedMutationCount: Number(idle.pendingOwnedMutationCount || 0),
+          workspaceChangeCount: Number(idle.workspaceChangeCount || 0),
+          ownedChangeCount: Number(idle.ownedChangeCount || 0),
+          unownedChangeCount: Number(idle.unownedChangeCount || 0),
+          pendingBashCategories: Array.isArray(idle.pendingBashCategories)
+            ? idle.pendingBashCategories.map(String)
+            : []
+        }
+      : undefined
   }
 }
 
@@ -341,11 +401,19 @@ export class ModelExecutor {
           `events=${telemetry.events}`,
           `tools_attempted=${formatToolCounts(telemetry.attempted)}`,
           `tools_completed=${formatToolCounts(telemetry.completed)}`,
+          `bash_attempted=${formatToolCounts(telemetry.attemptedBashCategories)}`,
           `mutation_attempted=${mutationAttempted}`,
           `mutation_completed=${mutationCompleted}`,
           `verification_completed=${(telemetry.completed.get("run_verification") || 0) > 0}`,
           `completion_completed=${(telemetry.completed.get("complete_lane") || 0) > 0}`,
           `session_errors=${telemetry.sessionErrors}`,
+          `idle_pending_tools=${telemetry.idleState?.pendingToolCount ?? -1}`,
+          `idle_pending_mutations=${telemetry.idleState?.pendingMutationCount ?? -1}`,
+          `idle_pending_owned_mutations=${telemetry.idleState?.pendingOwnedMutationCount ?? -1}`,
+          `idle_change_count=${telemetry.idleState?.workspaceChangeCount ?? -1}`,
+          `idle_owned_change_count=${telemetry.idleState?.ownedChangeCount ?? -1}`,
+          `idle_unowned_change_count=${telemetry.idleState?.unownedChangeCount ?? -1}`,
+          `idle_pending_bash=${telemetry.idleState?.pendingBashCategories.join(",") || "none"}`,
           `change_trace=${telemetry.changeTrace.length > 0 ? telemetry.changeTrace.join(">") : "none"}`,
           `result_present=${completionResultPresent}`,
           `changed_path_count=${changedPathCount}`,

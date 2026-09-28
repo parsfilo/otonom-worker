@@ -72,6 +72,40 @@ function classifyBashCommand(command: string): string {
   return "other"
 }
 
+interface SafeWorkspaceState {
+  workspaceChangeCount: number
+  ownedChangeCount: number
+  unownedChangeCount: number
+}
+
+function safeWorkspaceState(
+  task: any,
+  workspaceRoot: string,
+  ownershipTracker: OwnershipTracker
+): SafeWorkspaceState | undefined {
+  if (!task) return undefined
+  try {
+    const changed = new GitChangeDetector({
+      workspaceRoot,
+      baseSha: task.base_sha
+    }).detectChanges().actualChangedPaths
+    let ownedChangeCount = 0
+    let unownedChangeCount = 0
+    for (const changedPath of changed) {
+      if (ownershipTracker.checkPath(changedPath).allowed) ownedChangeCount++
+      else unownedChangeCount++
+    }
+    return {
+      workspaceChangeCount: changed.length,
+      ownedChangeCount,
+      unownedChangeCount
+    }
+  } catch {
+    return undefined
+  }
+}
+
+
 export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
   const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd())
   const taskPath = path.resolve(
@@ -112,6 +146,10 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
   const crossLaneRequestTool = new CrossLaneRequestTool(privateDir, lane)
   const runVerificationTool = new RunVerificationTool({ cwd: workspaceRoot })
   let latestVerification: VerificationResult | undefined
+  const pendingTools = new Map<
+    string,
+    { tool: string; commandCategory?: string; mutation: boolean; targetOwned?: boolean }
+  >()
 
   const hooks = {
     "shell.env": async (_input: any, output: { env: Record<string, string> }) => {
@@ -123,12 +161,16 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       output: { args: any }
     ) => {
       // Safe diagnostic metadata only: never record args, source, prompts or tool output.
+      const beforeState = ["bash", "write", "edit", "patch"].includes(input.tool)
+        ? safeWorkspaceState(task, workspaceRoot, ownershipTracker)
+        : undefined
       logger.logPrivateTelemetry({
         phase: "before",
         tool: input.tool,
         ...(input.tool === "bash"
           ? { commandCategory: classifyBashCommand(output.args?.command || "") }
-          : {})
+          : {}),
+        ...(beforeState || {})
       })
 
       if (BLOCKED_TOOLS.has(input.tool)) {
@@ -171,6 +213,7 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
         }
       }
 
+      let targetOwned: boolean | undefined
       if (["edit", "write", "patch"].includes(input.tool)) {
         if (task && READ_ONLY_ROLES.has(task.role)) {
           throw new Error(`Mutation blocked: role '${task.role}' is read-only.`)
@@ -181,12 +224,32 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
             ? path.relative(workspaceRoot, rawTargetPath)
             : rawTargetPath
           const check = ownershipTracker.recordEdit(relativePath)
+          targetOwned = check.allowed
           if (!check.allowed) {
             logger.logPrivateDiagnostic(`[OwnershipPolicy] BLOCKED EDIT: ${relativePath}`)
             throw new Error(`Edit forbidden by task ownership: ${check.violation?.detail}`)
           }
         }
       }
+
+      const callKey = input.callID || `${input.tool}:unknown`
+      pendingTools.set(callKey, {
+        tool: input.tool,
+        ...(input.tool === "bash"
+          ? { commandCategory: classifyBashCommand(output.args?.command || "") }
+          : {}),
+        mutation: ["edit", "write", "patch"].includes(input.tool),
+        ...(targetOwned === undefined ? {} : { targetOwned })
+      })
+      logger.logPrivateTelemetry({
+        phase: "dispatch",
+        tool: input.tool,
+        ...(input.tool === "bash"
+          ? { commandCategory: classifyBashCommand(output.args?.command || "") }
+          : {}),
+        ...(targetOwned === undefined ? {} : { targetOwned }),
+        ...(safeWorkspaceState(task, workspaceRoot, ownershipTracker) || {})
+      })
     },
 
     "tool.execute.after": async (
@@ -194,14 +257,11 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       output: { title?: string; output?: string; metadata?: any }
     ) => {
       const outStr = typeof output.output === "string" ? output.output : JSON.stringify(output.output || "")
-      const observesWorkspaceState = ["bash", "write", "edit", "patch"].includes(input.tool)
-      const workspaceChangeCount =
-        observesWorkspaceState && task
-          ? new GitChangeDetector({
-              workspaceRoot,
-              baseSha: task.base_sha
-            }).detectChanges().actualChangedPaths.length
-          : undefined
+      const callKey = input.callID || `${input.tool}:unknown`
+      pendingTools.delete(callKey)
+      const afterState = ["bash", "write", "edit", "patch"].includes(input.tool)
+        ? safeWorkspaceState(task, workspaceRoot, ownershipTracker)
+        : undefined
 
       logger.logPrivateTelemetry({
         phase: "after",
@@ -209,7 +269,7 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
         ...(input.tool === "bash"
           ? { commandCategory: classifyBashCommand(input.args?.command || "") }
           : {}),
-        ...(workspaceChangeCount === undefined ? {} : { workspaceChangeCount }),
+        ...(afterState || {}),
         outputLength: outStr.length,
         truncated: outStr.length > 2000,
         loopMetrics: loopDetector.getMetrics(),
@@ -250,12 +310,32 @@ ${task.acceptance_criteria.map((c: string) => `  * ${c}`).join("\n")}
       }
       if (event.type === "session.idle") {
         logger.logPrivateDiagnostic("[Session] Received session.idle event")
-        logger.logPrivateTelemetry({ phase: "event", event: "session.idle" })
+        const pending = [...pendingTools.values()]
+        logger.logPrivateTelemetry({
+          phase: "event",
+          event: "session.idle",
+          pendingToolCount: pending.length,
+          pendingMutationCount: pending.filter((item) => item.mutation).length,
+          pendingOwnedMutationCount: pending.filter((item) => item.mutation && item.targetOwned === true).length,
+          pendingBashCategories: pending
+            .filter((item) => item.tool === "bash")
+            .map((item) => item.commandCategory || "other")
+            .sort(),
+          ...(safeWorkspaceState(task, workspaceRoot, ownershipTracker) || {})
+        })
       }
       if (event.type === "session.error") {
         const errorName = event.error?.name || "unspecified"
         logger.logPrivateDiagnostic(`[Session Error] Error event received: ${errorName}`)
-        logger.logPrivateTelemetry({ phase: "event", event: "session.error", errorName })
+        const pending = [...pendingTools.values()]
+        logger.logPrivateTelemetry({
+          phase: "event",
+          event: "session.error",
+          errorName,
+          pendingToolCount: pending.length,
+          pendingMutationCount: pending.filter((item) => item.mutation).length,
+          ...(safeWorkspaceState(task, workspaceRoot, ownershipTracker) || {})
+        })
       }
     }
   }
