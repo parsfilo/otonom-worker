@@ -199,6 +199,7 @@ export class ModelExecutor {
         durationMs: runResult.durationMs,
         errorCategory: runResult.errorCategory
       })
+      console.log(`[ModelExecutor] lane=${laneId} model=${model} status=${runResult.status} category=${runResult.errorCategory || "NONE"} duration_ms=${runResult.durationMs}`)
 
       if (runResult.status === "PASS") {
         return {
@@ -210,6 +211,22 @@ export class ModelExecutor {
         }
       }
 
+      let genericNonZeroWithoutWork = false
+      if (
+        runResult.status === "FAIL" &&
+        runResult.errorCategory === "NON_ZERO_EXIT"
+      ) {
+        if (this.workspaceDir) {
+          const detector = new GitChangeDetector({
+            workspaceRoot: this.workspaceDir,
+            baseSha: this.baseSha || "HEAD"
+          })
+          genericNonZeroWithoutWork = detector.detectChanges().actualChangedPaths.length === 0
+        } else {
+          genericNonZeroWithoutWork = true
+        }
+      }
+
       const isTransientOrInfrastructure =
         runResult.status === "RATE_LIMITED" ||
         runResult.status === "STALLED" ||
@@ -218,7 +235,8 @@ export class ModelExecutor {
         runResult.errorCategory === "MODEL_UNAVAILABLE" ||
         runResult.errorCategory === "NO_WORK_PRODUCT" ||
         runResult.errorCategory === "RESULT_MISSING" ||
-        runResult.errorCategory === "COMPLETION_CONTRACT_FAILED"
+        runResult.errorCategory === "COMPLETION_CONTRACT_FAILED" ||
+        genericNonZeroWithoutWork
 
       if (isTransientOrInfrastructure && i + 1 < this.maxAttempts) {
         continue

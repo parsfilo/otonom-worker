@@ -435,4 +435,99 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     expect(result.attempts[1].status).toBe("PASS")
   })
 
+
+  it("Test 12: generic non-zero exit with no work product falls back safely", async () => {
+    const repoDir = path.join(tempDir, "generic-nonzero")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: repoDir, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf-8" }).trim()
+    let calls = 0
+
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      baseSha,
+      runnerFactory: () => ({
+        run: async () => {
+          calls++
+          if (calls === 1) {
+            return {
+              exitCode: 1,
+              status: "FAIL" as const,
+              errorCategory: "NON_ZERO_EXIT",
+              durationMs: 1,
+              timedOut: false,
+              stalled: false,
+              stdoutPath: "",
+              stderrPath: "",
+              sanitizedSummary: "bounded nonzero"
+            }
+          }
+          return {
+            exitCode: 0,
+            status: "PASS" as const,
+            durationMs: 1,
+            timedOut: false,
+            stalled: false,
+            stdoutPath: "",
+            stderrPath: "",
+            sanitizedSummary: "pass"
+          }
+        }
+      }),
+      maxAttempts: 2
+    })
+
+    const result = await executor.executeLane("lane-generic-nonzero", "builder-core")
+    expect(result.success).toBe(true)
+    expect(calls).toBe(2)
+    expect(result.attempts[0].errorCategory).toBe("NON_ZERO_EXIT")
+  })
+
+  it("Test 13: generic non-zero exit after repository mutation does not fall back", async () => {
+    const repoDir = path.join(tempDir, "generic-nonzero-with-work")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: repoDir, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf-8" }).trim()
+    let calls = 0
+
+    const executor = new ModelExecutor({
+      selector: new ModelSelector(),
+      workspaceDir: repoDir,
+      baseSha,
+      runnerFactory: () => ({
+        run: async () => {
+          calls++
+          fs.writeFileSync(path.join(repoDir, "work.txt"), "partial\n")
+          return {
+            exitCode: 1,
+            status: "FAIL" as const,
+            errorCategory: "NON_ZERO_EXIT",
+            durationMs: 1,
+            timedOut: false,
+            stalled: false,
+            stdoutPath: "",
+            stderrPath: "",
+            sanitizedSummary: "bounded nonzero"
+          }
+        }
+      }),
+      maxAttempts: 2
+    })
+
+    const result = await executor.executeLane("lane-generic-nonzero-work", "builder-core")
+    expect(result.success).toBe(false)
+    expect(calls).toBe(1)
+  })
+
 })
