@@ -5,6 +5,10 @@
  */
 
 import { execSync } from "node:child_process"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { sanitizeEnv } from "../policies/env-policy.js"
 
 export type ModelAttemptStatus = "PASS" | "FAIL" | "STALLED" | "RATE_LIMITED" | "UNAVAILABLE"
 
@@ -86,16 +90,37 @@ export class ModelSelector {
   }
 
   public static discoverFreeModels(): string[] {
+    const discoveryHome = fs.mkdtempSync(path.join(os.tmpdir(), "otonom-opencode-models-"))
     try {
       const output = execSync("opencode models", {
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: 15000
+        timeout: 15000,
+        env: {
+          ...sanitizeEnv(process.env),
+          HOME: discoveryHome,
+          XDG_CONFIG_HOME: path.join(discoveryHome, ".config"),
+          XDG_DATA_HOME: path.join(discoveryHome, ".local", "share"),
+          XDG_CACHE_HOME: path.join(discoveryHome, ".cache")
+        }
       })
       const lines = output.split(/\r?\n/).map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean)
       return lines.filter((m) => ModelSelector.isSafeFreeModel(m))
-    } catch {}
-    return []
+    } catch {
+      return []
+    } finally {
+      try {
+        fs.rmSync(discoveryHome, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100
+        })
+      } catch {
+        // OpenCode may briefly retain/write cache files after `models` exits.
+        // Discovery correctness must not depend on disposable cache cleanup.
+      }
+    }
   }
 
   public normalizeModel(model: string): string {
