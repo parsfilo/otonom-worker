@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
+import { execFileSync } from "node:child_process"
 import { OtonomPlugin, createOtonomPlugin } from "../../.opencode/plugins/otonom-harness.js"
 
 describe("OpenCode Otonom Harness Plugin", () => {
@@ -90,6 +91,36 @@ describe("OpenCode Otonom Harness Plugin", () => {
     expect(telemetry).not.toContain("private.ts")
     expect(telemetry).not.toContain("do-not-log")
     expect(telemetry).not.toContain("private source content")
+  })
+
+  it("records safe bash categories and numeric workspace change counts", async () => {
+    const workspaceDir = path.join(tempDir, "workspace")
+    fs.mkdirSync(workspaceDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: workspaceDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test"], { cwd: workspaceDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspaceDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(workspaceDir, "README.md"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: workspaceDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: workspaceDir, stdio: "ignore" })
+    fs.writeFileSync(taskPath, JSON.stringify({ ...mockTask, base_sha: "HEAD" }))
+
+    const plugin = createOtonomPlugin({ taskPath, workspaceRoot: workspaceDir, runnerTemp })
+    await plugin.hooks["tool.execute.before"](
+      { tool: "bash" },
+      { args: { command: "git status --short" } }
+    )
+    await plugin.hooks["tool.execute.after"](
+      { tool: "bash", args: { command: "git status --short" } },
+      { output: "" }
+    )
+
+    const telemetry = fs.readFileSync(
+      path.join(runnerTemp, "otonom-private", mockTask.id, "telemetry.jsonl"),
+      "utf-8"
+    )
+    expect(telemetry).toContain('"commandCategory":"git_status"')
+    expect(telemetry).toContain('"workspaceChangeCount":0')
+    expect(telemetry).not.toContain("git status --short")
   })
 
   it("tool.execute.before blocks git push command", async () => {

@@ -43,6 +43,7 @@ interface AttemptTelemetrySummary {
   attempted: Map<string, number>
   completed: Map<string, number>
   sessionErrors: number
+  changeTrace: string[]
 }
 
 function countByTool(events: Array<Record<string, unknown>>, phase: string): Map<string, number> {
@@ -56,7 +57,7 @@ function countByTool(events: Array<Record<string, unknown>>, phase: string): Map
 
 function readAttemptTelemetry(telemetryPath: string, startOffset: number): AttemptTelemetrySummary {
   if (!fs.existsSync(telemetryPath)) {
-    return { events: 0, attempted: new Map(), completed: new Map(), sessionErrors: 0 }
+    return { events: 0, attempted: new Map(), completed: new Map(), sessionErrors: 0, changeTrace: [] }
   }
 
   const content = fs.readFileSync(telemetryPath).subarray(startOffset).toString("utf-8")
@@ -71,11 +72,28 @@ function readAttemptTelemetry(telemetryPath: string, startOffset: number): Attem
     }
   }
 
+  const changeTrace = events
+    .filter(
+      (event) =>
+        event.phase === "after" &&
+        typeof event.tool === "string" &&
+        typeof event.workspaceChangeCount === "number"
+    )
+    .slice(0, 32)
+    .map((event) => {
+      const category =
+        event.tool === "bash" && typeof event.commandCategory === "string"
+          ? "[" + event.commandCategory + "]"
+          : ""
+      return String(event.tool) + category + ":" + String(event.workspaceChangeCount)
+    })
+
   return {
     events: events.length,
     attempted: countByTool(events, "before"),
     completed: countByTool(events, "after"),
-    sessionErrors: events.filter((event) => event.phase === "event" && event.event === "session.error").length
+    sessionErrors: events.filter((event) => event.phase === "event" && event.event === "session.error").length,
+    changeTrace
   }
 }
 
@@ -133,6 +151,7 @@ export class ModelExecutor {
   ): Promise<ModelExecutionResult> {
     const attempts: ModelExecutionAttempt[] = []
     const attemptedModels: string[] = []
+    let configPreflightPassed = false
 
     if (this.workspaceDir) {
       const workspaceStatus = new CapabilityRuntimeManager().captureWorkspaceStatus(this.workspaceDir)
@@ -187,7 +206,22 @@ export class ModelExecutor {
           XDG_CACHE_HOME: path.join(attemptHomeDir, ".cache")
         }
 
-        if (this.opencodeConfigPath && this.opencodeConfigDir && this.workspaceDir) {
+        if (!model.startsWith("opencode/") || !model.includes("-free")) {
+          return {
+            success: false,
+            status: "FAIL",
+            actualModel: model,
+            attempts,
+            error: "MODEL_UNAVAILABLE"
+          }
+        }
+
+        if (
+          !configPreflightPassed &&
+          this.opencodeConfigPath &&
+          this.opencodeConfigDir &&
+          this.workspaceDir
+        ) {
           const preflight = new CapabilityRuntimeManager().preflightOpenCodeConfig({
             configPath: this.opencodeConfigPath,
             configDir: this.opencodeConfigDir,
@@ -195,6 +229,9 @@ export class ModelExecutor {
             model
           })
           if (!preflight.ok) {
+            console.log(
+              "[ModelExecutor Preflight] lane=" + laneId + " status=FAIL category=" + preflight.category
+            )
             return {
               success: false,
               status: "FAIL",
@@ -203,6 +240,8 @@ export class ModelExecutor {
               error: preflight.category
             }
           }
+          configPreflightPassed = true
+          console.log("[ModelExecutor Preflight] lane=" + laneId + " status=PASS")
         }
         const lanePrivateDir = path.join(this.privateDir, laneId)
         runner = new AgentRunner({
@@ -307,6 +346,7 @@ export class ModelExecutor {
           `verification_completed=${(telemetry.completed.get("run_verification") || 0) > 0}`,
           `completion_completed=${(telemetry.completed.get("complete_lane") || 0) > 0}`,
           `session_errors=${telemetry.sessionErrors}`,
+          `change_trace=${telemetry.changeTrace.length > 0 ? telemetry.changeTrace.join(">") : "none"}`,
           `result_present=${completionResultPresent}`,
           `changed_path_count=${changedPathCount}`,
           `stdout_bytes=${fileSizeOrZero(runResult.stdoutPath)}`,

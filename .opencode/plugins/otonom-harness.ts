@@ -59,6 +59,19 @@ function asToolOutput(value: unknown): string {
   return JSON.stringify(value)
 }
 
+function classifyBashCommand(command: string): string {
+  const normalized = command.trim().toLowerCase()
+  if (/\bgit\s+status\b/.test(normalized)) return "git_status"
+  if (/\bgit\s+diff\b/.test(normalized)) return "git_diff"
+  if (/\bgit\s+clean\b/.test(normalized)) return "git_clean"
+  if (/\bgit\s+reset\b/.test(normalized)) return "git_reset"
+  if (/\bgit\s+(?:checkout|restore)\b/.test(normalized)) return "git_restore"
+  if (/\brm\b/.test(normalized)) return "remove"
+  if (/\bmkdir\b/.test(normalized)) return "mkdir"
+  if (/\b(?:test|vitest|jest|lint|typecheck|tsc)\b/.test(normalized)) return "verification"
+  return "other"
+}
+
 export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
   const workspaceRoot = path.resolve(options.workspaceRoot || process.cwd())
   const taskPath = path.resolve(
@@ -112,7 +125,10 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       // Safe diagnostic metadata only: never record args, source, prompts or tool output.
       logger.logPrivateTelemetry({
         phase: "before",
-        tool: input.tool
+        tool: input.tool,
+        ...(input.tool === "bash"
+          ? { commandCategory: classifyBashCommand(output.args?.command || "") }
+          : {})
       })
 
       if (BLOCKED_TOOLS.has(input.tool)) {
@@ -178,9 +194,22 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
       output: { title?: string; output?: string; metadata?: any }
     ) => {
       const outStr = typeof output.output === "string" ? output.output : JSON.stringify(output.output || "")
+      const observesWorkspaceState = ["bash", "write", "edit", "patch"].includes(input.tool)
+      const workspaceChangeCount =
+        observesWorkspaceState && task
+          ? new GitChangeDetector({
+              workspaceRoot,
+              baseSha: task.base_sha
+            }).detectChanges().actualChangedPaths.length
+          : undefined
+
       logger.logPrivateTelemetry({
         phase: "after",
         tool: input.tool,
+        ...(input.tool === "bash"
+          ? { commandCategory: classifyBashCommand(input.args?.command || "") }
+          : {}),
+        ...(workspaceChangeCount === undefined ? {} : { workspaceChangeCount }),
         outputLength: outStr.length,
         truncated: outStr.length > 2000,
         loopMetrics: loopDetector.getMetrics(),

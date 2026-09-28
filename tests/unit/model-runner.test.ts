@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process"
 import { ModelSelector } from "../../harness/runtime/model-selector.js"
 import { ModelExecutor } from "../../harness/runtime/model-executor.js"
 import { AgentRunner, type AgentRunResult } from "../../harness/runtime/agent-runner.js"
+import { CapabilityRuntimeManager } from "../../harness/runtime/capability-runtime.js"
 
 describe("Model Selector & Execution Driver with Fallback", () => {
   let tempDir: string
@@ -202,7 +203,62 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     }
   })
 
-  it("Test 3c: emits bounded sanitized per-attempt tool diagnostics", async () => {
+  it("Test 3c: config preflight runs once across model fallback attempts", async () => {
+    const repoDir = path.join(tempDir, "preflight-target")
+    fs.mkdirSync(repoDir, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Runner"], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir, stdio: "ignore" })
+    fs.writeFileSync(path.join(repoDir, "README.md"), "fixture\n")
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "ignore" })
+
+    const preflightSpy = vi
+      .spyOn(CapabilityRuntimeManager.prototype, "preflightOpenCodeConfig")
+      .mockReturnValue({ ok: true })
+    let calls = 0
+    const runSpy = vi.spyOn(AgentRunner.prototype, "run").mockImplementation(async () => {
+      calls++
+      const stalled = calls === 1
+      return {
+        exitCode: stalled ? null : 0,
+        status: stalled ? "STALLED" : "PASS",
+        durationMs: 10,
+        timedOut: stalled,
+        stalled,
+        stdoutPath: path.join(privateDir, "out.log"),
+        stderrPath: path.join(privateDir, "err.log"),
+        sanitizedSummary: stalled ? "Timed out" : "Passed",
+        errorCategory: stalled ? "TIMEOUT" : undefined
+      } satisfies AgentRunResult
+    })
+
+    try {
+      const executor = new ModelExecutor({
+        selector: new ModelSelector({
+          availableCatalog: [
+            "opencode/mimo-v2.6-flash-free",
+            "opencode/ling-3.0-flash-fin-free"
+          ]
+        }),
+        privateDir,
+        workspaceDir: repoDir,
+        opencodeConfigPath: path.join(tempDir, "opencode.json"),
+        opencodeConfigDir: tempDir,
+        maxAttempts: 2
+      })
+
+      const result = await executor.executeLane("lane-preflight-once", "builder-core")
+      expect(result.status).toBe("PASS")
+      expect(calls).toBe(2)
+      expect(preflightSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      runSpy.mockRestore()
+      preflightSpy.mockRestore()
+    }
+  })
+
+  it("Test 3d: emits bounded sanitized per-attempt tool diagnostics", async () => {
     const telemetryPath = path.join(privateDir, "telemetry.jsonl")
     const stdoutPath = path.join(privateDir, "diag.stdout")
     const stderrPath = path.join(privateDir, "diag.stderr")
@@ -224,6 +280,8 @@ describe("Model Selector & Execution Driver with Fallback", () => {
                 JSON.stringify({ phase: "before", tool: "task_context", timestamp: "x" }),
                 JSON.stringify({ phase: "after", tool: "task_context", outputLength: 10, timestamp: "x" }),
                 JSON.stringify({ phase: "before", tool: "write", timestamp: "x" }),
+                JSON.stringify({ phase: "after", tool: "write", workspaceChangeCount: 1, timestamp: "x" }),
+                JSON.stringify({ phase: "after", tool: "bash", commandCategory: "git_clean", workspaceChangeCount: 0, timestamp: "x" }),
                 JSON.stringify({ phase: "event", event: "session.error", errorName: "TestError", timestamp: "x" })
               ].join("\n") + "\n"
             )
@@ -248,10 +306,11 @@ describe("Model Selector & Execution Driver with Fallback", () => {
         .find((line) => line.startsWith("[ModelExecutor Diagnostic]"))
 
       expect(diagnostic).toContain("tools_attempted=task_context:1,write:1")
-      expect(diagnostic).toContain("tools_completed=task_context:1")
+      expect(diagnostic).toContain("tools_completed=bash:1,task_context:1,write:1")
       expect(diagnostic).toContain("mutation_attempted=true")
-      expect(diagnostic).toContain("mutation_completed=false")
+      expect(diagnostic).toContain("mutation_completed=true")
       expect(diagnostic).toContain("session_errors=1")
+      expect(diagnostic).toContain("change_trace=write:1>bash[git_clean]:0")
       expect(diagnostic).toContain("stdout_bytes=4")
       expect(diagnostic).not.toContain("TestError")
     } finally {
