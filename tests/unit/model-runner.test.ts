@@ -217,7 +217,11 @@ describe("Model Selector & Execution Driver with Fallback", () => {
       .spyOn(CapabilityRuntimeManager.prototype, "preflightOpenCodeConfig")
       .mockReturnValue({ ok: true })
     let calls = 0
-    const runSpy = vi.spyOn(AgentRunner.prototype, "run").mockImplementation(async () => {
+    const seenPwds: string[] = []
+    const runSpy = vi.spyOn(AgentRunner.prototype, "run").mockImplementation(async function (this: AgentRunner) {
+      seenPwds.push(
+        String((this as unknown as { env?: Record<string, string> }).env?.PWD || "")
+      )
       calls++
       const stalled = calls === 1
       return {
@@ -252,6 +256,7 @@ describe("Model Selector & Execution Driver with Fallback", () => {
       expect(result.status).toBe("PASS")
       expect(calls).toBe(2)
       expect(preflightSpy).toHaveBeenCalledTimes(1)
+      expect(seenPwds).toEqual([path.resolve(repoDir), path.resolve(repoDir)])
     } finally {
       runSpy.mockRestore()
       preflightSpy.mockRestore()

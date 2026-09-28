@@ -320,6 +320,8 @@ export class CapabilityRuntimeManager {
         cwd: input.targetWorkspaceDir,
         env: {
           ...sanitizeEnv(process.env),
+          // OpenCode prioritizes PWD over process.cwd() when resolving project root.
+          PWD: path.resolve(input.targetWorkspaceDir),
           HOME: preflightHome,
           XDG_CONFIG_HOME: path.join(preflightHome, ".config"),
           XDG_DATA_HOME: path.join(preflightHome, ".local", "share"),

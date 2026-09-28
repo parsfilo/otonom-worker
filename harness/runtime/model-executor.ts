@@ -260,6 +260,10 @@ export class ModelExecutor {
 
         const attemptAgentEnv = {
           ...this.agentEnv,
+          // OpenCode 1.18.x resolves its project root from PWD before process.cwd().
+          // Keep PWD aligned with the trusted target checkout instead of inheriting
+          // the worker-harness checkout from the GitHub Actions parent process.
+          ...(this.workspaceDir ? { PWD: path.resolve(this.workspaceDir) } : {}),
           HOME: attemptHomeDir,
           XDG_CONFIG_HOME: path.join(attemptHomeDir, ".config"),
           XDG_DATA_HOME: path.join(attemptHomeDir, ".local", "share"),
