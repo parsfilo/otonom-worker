@@ -399,6 +399,78 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     }
   })
 
+  it("Test 3f: emits sanitized live progress while an attempt is still running", async () => {
+    const telemetryPath = path.join(privateDir, "telemetry.jsonl")
+    const stdoutPath = path.join(privateDir, "live.stdout")
+    const stderrPath = path.join(privateDir, "live.stderr")
+    fs.writeFileSync(stdoutPath, "")
+    fs.writeFileSync(stderrPath, "")
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    try {
+      const executor = new ModelExecutor({
+        selector: new ModelSelector({
+          availableCatalog: ["opencode/ling-3.0-flash-fin-free"]
+        }),
+        privateDir,
+        progressIntervalMs: 20,
+        runnerFactory: () => ({
+          run: async () => {
+            fs.appendFileSync(
+              telemetryPath,
+              JSON.stringify({
+                phase: "after",
+                tool: "write",
+                workspaceChangeCount: 1,
+                ownedChangeCount: 1,
+                unownedChangeCount: 0,
+                timestamp: new Date().toISOString(),
+                secret: "must-never-be-public"
+              }) + "\n"
+            )
+            await new Promise((resolve) => setTimeout(resolve, 35))
+            fs.appendFileSync(
+              telemetryPath,
+              JSON.stringify({
+                phase: "after",
+                tool: "complete_lane",
+                workspaceChangeCount: 1,
+                ownedChangeCount: 1,
+                unownedChangeCount: 0,
+                timestamp: new Date().toISOString()
+              }) + "\n"
+            )
+            await new Promise((resolve) => setTimeout(resolve, 35))
+            return {
+              exitCode: 0,
+              status: "PASS" as const,
+              durationMs: 70,
+              timedOut: false,
+              stalled: false,
+              stdoutPath,
+              stderrPath,
+              sanitizedSummary: "Passed"
+            }
+          }
+        }),
+        maxAttempts: 1
+      })
+
+      await executor.executeLane("lane-live-progress", "builder-core")
+      const progressLines = logSpy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => line.startsWith("[Agent Progress]"))
+
+      expect(progressLines.length).toBeGreaterThanOrEqual(2)
+      expect(progressLines.some((line) => line.includes("state=ACTIVE"))).toBe(true)
+      expect(progressLines.some((line) => line.includes("state=COMPLETE_PENDING_EXIT"))).toBe(true)
+      expect(progressLines.some((line) => line.includes("owned_changes=1"))).toBe(true)
+      expect(progressLines.join("\n")).not.toContain("must-never-be-public")
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
   it("Test 4: unavailable model in catalog is skipped", async () => {
     const selector = new ModelSelector({
       availableCatalog: ["opencode/longcat-2.5-preview-free"]

@@ -20,6 +20,7 @@ export interface ModelExecutorOptions {
   completionResultPath?: string
   requireCompletionResult?: boolean
   attemptTimeoutMs?: number
+  progressIntervalMs?: number
 }
 
 export interface ModelExecutionAttempt {
@@ -46,6 +47,15 @@ interface AttemptTelemetrySummary {
   attemptedBashCategories: Map<string, number>
   sessionErrors: number
   changeTrace: string[]
+  latestTimestamp?: number
+  lastTool?: string
+  lastPhase?: string
+  lastCommandCategory?: string
+  lastWorkspaceState?: {
+    workspaceChangeCount: number
+    ownedChangeCount: number
+    unownedChangeCount: number
+  }
   idleState?: {
     pendingToolCount: number
     pendingMutationCount: number
@@ -135,6 +145,26 @@ function readAttemptTelemetry(telemetryPath: string, startOffset: number): Attem
     .reverse()
     .find((event) => event.phase === "event" && event.event === "session.idle")
 
+  const latestEvent = [...events]
+    .reverse()
+    .find((event) => typeof event.timestamp === "string")
+  const latestTimestamp =
+    typeof latestEvent?.timestamp === "string"
+      ? Date.parse(latestEvent.timestamp)
+      : undefined
+
+  const latestToolEvent = [...events]
+    .reverse()
+    .find((event) => typeof event.tool === "string")
+  const latestWorkspaceEvent = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        typeof event.workspaceChangeCount === "number" &&
+        typeof event.ownedChangeCount === "number" &&
+        typeof event.unownedChangeCount === "number"
+    )
+
   return {
     events: events.length,
     attempted: countByTool(events, "before"),
@@ -142,6 +172,25 @@ function readAttemptTelemetry(telemetryPath: string, startOffset: number): Attem
     attemptedBashCategories,
     sessionErrors: events.filter((event) => event.phase === "event" && event.event === "session.error").length,
     changeTrace,
+    ...(Number.isFinite(latestTimestamp) ? { latestTimestamp } : {}),
+    ...(latestToolEvent
+      ? {
+          lastTool: String(latestToolEvent.tool),
+          lastPhase: String(latestToolEvent.phase || "unknown"),
+          ...(typeof latestToolEvent.commandCategory === "string"
+            ? { lastCommandCategory: latestToolEvent.commandCategory }
+            : {})
+        }
+      : {}),
+    ...(latestWorkspaceEvent
+      ? {
+          lastWorkspaceState: {
+            workspaceChangeCount: Number(latestWorkspaceEvent.workspaceChangeCount),
+            ownedChangeCount: Number(latestWorkspaceEvent.ownedChangeCount),
+            unownedChangeCount: Number(latestWorkspaceEvent.unownedChangeCount)
+          }
+        }
+      : {}),
     idleState: idle
       ? {
           pendingToolCount: Number(idle.pendingToolCount || 0),
@@ -172,6 +221,81 @@ function fileSizeOrZero(filePath: string): number {
   } catch {
     return 0
   }
+}
+
+type LiveProgressState =
+  | "STARTING"
+  | "ACTIVE"
+  | "QUIET"
+  | "VERIFYING"
+  | "COMPLETE_PENDING_EXIT"
+  | "IDLE_PENDING_EXIT"
+
+function classifyLiveProgress(
+  telemetry: AttemptTelemetrySummary,
+  nowMs: number,
+  attemptStartedAt: number
+): LiveProgressState {
+  if ((telemetry.completed.get("complete_lane") || 0) > 0) {
+    return "COMPLETE_PENDING_EXIT"
+  }
+  if (telemetry.idleState) {
+    return "IDLE_PENDING_EXIT"
+  }
+  if (
+    telemetry.lastTool === "run_verification" ||
+    (telemetry.lastTool === "bash" && telemetry.lastCommandCategory === "verification")
+  ) {
+    return "VERIFYING"
+  }
+  if (telemetry.events === 0) {
+    return "STARTING"
+  }
+
+  const lastProgressAt = telemetry.latestTimestamp ?? attemptStartedAt
+  return nowMs - lastProgressAt <= 60_000 ? "ACTIVE" : "QUIET"
+}
+
+function emitLiveProgress(options: {
+  laneId: string
+  attempt: number
+  model: string
+  telemetryPath: string
+  telemetryStartOffset: number
+  attemptStartedAt: number
+}) {
+  const now = Date.now()
+  const telemetry = readAttemptTelemetry(options.telemetryPath, options.telemetryStartOffset)
+  const lastProgressAt = telemetry.latestTimestamp ?? options.attemptStartedAt
+  const workspace = telemetry.lastWorkspaceState
+  const completedToolCount = [...telemetry.completed.values()].reduce((sum, count) => sum + count, 0)
+  const verificationCompleted = (telemetry.completed.get("run_verification") || 0) > 0
+  const completionCompleted = (telemetry.completed.get("complete_lane") || 0) > 0
+  const lastTool = telemetry.lastTool
+    ? telemetry.lastCommandCategory
+      ? `${telemetry.lastTool}[${telemetry.lastCommandCategory}]`
+      : telemetry.lastTool
+    : "none"
+
+  console.log(
+    [
+      "[Agent Progress]",
+      `lane=${options.laneId}`,
+      `attempt=${options.attempt}`,
+      `model=${options.model}`,
+      `elapsed_s=${Math.max(0, Math.floor((now - options.attemptStartedAt) / 1000))}`,
+      `state=${classifyLiveProgress(telemetry, now, options.attemptStartedAt)}`,
+      `last_progress_s=${Math.max(0, Math.floor((now - lastProgressAt) / 1000))}`,
+      `events=${telemetry.events}`,
+      `tools_completed=${completedToolCount}`,
+      `last_tool=${lastTool}`,
+      `owned_changes=${workspace?.ownedChangeCount ?? -1}`,
+      `unowned_changes=${workspace?.unownedChangeCount ?? -1}`,
+      `verification=${verificationCompleted}`,
+      `completion=${completionCompleted}`,
+      `session_errors=${telemetry.sessionErrors}`
+    ].join(" ")
+  )
 }
 
 function resetWorkspaceForRetry(workspaceDir: string, baseSha: string) {
@@ -208,6 +332,7 @@ export class ModelExecutor {
   private completionResultPath?: string
   private requireCompletionResult: boolean
   private attemptTimeoutMs?: number
+  private progressIntervalMs: number
 
   constructor(options: ModelExecutorOptions = {}) {
     this.selector = options.selector || new ModelSelector()
@@ -223,6 +348,7 @@ export class ModelExecutor {
     this.completionResultPath = options.completionResultPath
     this.requireCompletionResult = options.requireCompletionResult === true
     this.attemptTimeoutMs = options.attemptTimeoutMs
+    this.progressIntervalMs = options.progressIntervalMs ?? 30_000
   }
 
   public async executeLane(
@@ -365,7 +491,32 @@ export class ModelExecutor {
         })
       }
 
-      let runResult = await runner.run()
+      const attemptStartedAt = Date.now()
+      let progressTimer: ReturnType<typeof setInterval> | undefined
+      if (this.progressIntervalMs > 0) {
+        progressTimer = setInterval(() => {
+          try {
+            emitLiveProgress({
+              laneId,
+              attempt: i + 1,
+              model,
+              telemetryPath,
+              telemetryStartOffset,
+              attemptStartedAt
+            })
+          } catch {
+            // Live observability is best-effort and must never affect execution.
+          }
+        }, this.progressIntervalMs)
+        progressTimer.unref?.()
+      }
+
+      let runResult: AgentRunResult
+      try {
+        runResult = await runner.run()
+      } finally {
+        if (progressTimer) clearInterval(progressTimer)
+      }
 
       if (
         runResult.status === "PASS" &&
