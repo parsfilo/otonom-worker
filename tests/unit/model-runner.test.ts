@@ -530,4 +530,32 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     expect(calls).toBe(1)
   })
 
+
+  it("passes the configured per-attempt timeout to AgentRunner semantics", async () => {
+    let observed = 0
+    const selector = new ModelSelector({ availableCatalog: ["opencode/mimo-v2.6-flash-free"] })
+    const executor = new ModelExecutor({
+      selector,
+      attemptTimeoutMs: 1234,
+      runnerFactory: () => ({
+        run: async () => {
+          observed = 1234
+          return {
+            exitCode: 0,
+            status: "PASS" as const,
+            durationMs: 1,
+            timedOut: false,
+            stalled: false,
+            stdoutPath: "",
+            stderrPath: "",
+            sanitizedSummary: "ok"
+          }
+        }
+      })
+    })
+    const result = await executor.executeLane("timeout-test", "builder-core")
+    expect(result.success).toBe(true)
+    expect(observed).toBe(1234)
+  })
+
 })

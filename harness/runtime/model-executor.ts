@@ -18,6 +18,7 @@ export interface ModelExecutorOptions {
   baseSha?: string
   completionResultPath?: string
   requireCompletionResult?: boolean
+  attemptTimeoutMs?: number
 }
 
 export interface ModelExecutionAttempt {
@@ -49,6 +50,7 @@ export class ModelExecutor {
   private baseSha?: string
   private completionResultPath?: string
   private requireCompletionResult: boolean
+  private attemptTimeoutMs?: number
 
   constructor(options: ModelExecutorOptions = {}) {
     this.selector = options.selector || new ModelSelector()
@@ -63,6 +65,7 @@ export class ModelExecutor {
     this.baseSha = options.baseSha
     this.completionResultPath = options.completionResultPath
     this.requireCompletionResult = options.requireCompletionResult === true
+    this.attemptTimeoutMs = options.attemptTimeoutMs
   }
 
   public async executeLane(
@@ -130,6 +133,7 @@ export class ModelExecutor {
           command: OPENCODE_COMMAND,
           args: opencodeArgs(["run", "-m", model, "--auto", prompt]),
           cwd: this.workspaceDir,
+          timeoutMs: this.attemptTimeoutMs,
           env:
             this.opencodeConfigPath && this.opencodeConfigDir
               ? {

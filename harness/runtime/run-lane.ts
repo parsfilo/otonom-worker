@@ -158,6 +158,7 @@ export async function runLane(
     opencodeConfigPath: path.join(opencodeConfigDir, "opencode.json"),
     opencodeConfigDir,
     maxAttempts: 6,
+    attemptTimeoutMs: Math.max(1, Number(task.attempt_timeout_minutes || 5)) * 60 * 1000,
     requiresChanges: task.requires_changes === true,
     baseSha: task.base_sha,
     agentEnv: {

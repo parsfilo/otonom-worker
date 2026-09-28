@@ -15,6 +15,7 @@ export interface TaskRecord {
   acceptance_criteria: string[]
   verification_profile: string
   timeout_minutes?: number
+  attempt_timeout_minutes?: number
   risk_classification: string
   requires_changes?: boolean
 }

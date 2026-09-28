@@ -29,10 +29,10 @@ export class ModelSelector {
   private defaultChain: string[] = [
     "opencode/mimo-v2.6-flash-free",
     "opencode/nemotron-3.5-lightning-free",
-    "opencode/space-bunny-free",
-    "opencode/longcat-2.5-preview-free",
     "opencode/ling-3.0-flash-fin-free",
-    "opencode/muse-spark-1.3-contributor-free"
+    "opencode/muse-spark-1.3-contributor-free",
+    "opencode/longcat-2.5-preview-free",
+    "opencode/space-bunny-free"
   ]
 
   private executionHistory: Map<string, ModelAttempt[]> = new Map()

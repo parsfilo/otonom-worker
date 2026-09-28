@@ -20,4 +20,5 @@ tasks:
     verification_profile: "smoke-doc"
     requires_changes: true
     timeout_minutes: 15
+    attempt_timeout_minutes: 2
     risk_classification: "LOW"

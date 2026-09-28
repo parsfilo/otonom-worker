@@ -119,4 +119,19 @@ describe("Model Selector", () => {
     expect(selector.selectModelForRole("builder-core")).toBe("opencode/mimo-v2.6-flash-free")
   })
 
+
+  it("prefers responsive free models before known slow fallback models", () => {
+    const selector = new ModelSelector({
+      availableCatalog: [
+        "opencode/space-bunny-free",
+        "opencode/longcat-2.5-preview-free",
+        "opencode/ling-3.0-flash-fin-free",
+        "opencode/muse-spark-1.3-contributor-free"
+      ]
+    })
+    const chain = selector.getAllModelsForRole("builder-core")
+    expect(chain.indexOf("opencode/ling-3.0-flash-fin-free")).toBeLessThan(chain.indexOf("opencode/longcat-2.5-preview-free"))
+    expect(chain.indexOf("opencode/muse-spark-1.3-contributor-free")).toBeLessThan(chain.indexOf("opencode/space-bunny-free"))
+  })
+
 })
