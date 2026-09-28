@@ -17,5 +17,6 @@ describe("Run Lane Task Completion Contract", () => {
     expect(prompt).toContain("smoke-doc")
     expect(prompt).toContain("textual explanation without the required repository changes is NOT completion")
     expect(prompt).toContain("call complete_lane")
+    expect(prompt).toContain("Do not run dependency-mutating package-manager commands")
   })
 })

@@ -23,6 +23,21 @@ export interface OtonomPluginContext {
   runnerTemp?: string
 }
 
+
+function isDependencyMutationCommand(command: string): boolean {
+  return /(?:^|[;&|\n]\s*)(?:pnpm\s+(?:i|install|add|remove|rm|update|up|import)|npm\s+(?:i|install|uninstall|remove|update)|yarn\s+(?:install|add|remove|up|upgrade)|bun\s+(?:install|add|remove|update))\b/i.test(command)
+}
+
+const DEPENDENCY_CONTROL_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb"
+]
+
 function asToolOutput(value: unknown): string {
   return JSON.stringify(value)
 }
@@ -91,6 +106,15 @@ export function createOtonomPlugin(options: OtonomPluginContext = {}): any {
         if (!evalResult.allowed) {
           logger.logPrivateDiagnostic(`[CommandPolicy] BLOCKED: ${command} (${evalResult.reason})`)
           throw new Error(`Command blocked by harness security policy: ${evalResult.reason}`)
+        }
+        if (task && isDependencyMutationCommand(command)) {
+          const dependencyWriteOwned = DEPENDENCY_CONTROL_PATHS.some((candidate) =>
+            ownershipTracker.checkPath(candidate).allowed
+          )
+          if (!dependencyWriteOwned) {
+            logger.logPrivateDiagnostic(`[CommandPolicy] BLOCKED dependency mutation outside task ownership`)
+            throw new Error("Dependency mutation blocked: package manifests/lockfiles are outside this task's owned paths.")
+          }
         }
       }
 

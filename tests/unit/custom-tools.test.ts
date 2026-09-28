@@ -144,4 +144,27 @@ describe("OpenCode Custom Tools", () => {
     expect(fs.existsSync(path.join(targetDir, "result.json"))).toBe(false)
   })
 
+
+  it("complete_lane rejects authoritative changed paths outside task ownership", async () => {
+    const tool = new CompleteLaneTool({
+      taskPath,
+      privateDir,
+      workspaceRoot: tempDir,
+      latestVerification: {
+        profile: "lane",
+        command: "node -e process.exit(0)",
+        exit_code: 0,
+        passed: true,
+        duration_ms: 1
+      },
+      changedPaths: ["src/webhooks/receiver.ts", "pnpm-lock.yaml"],
+      modelUsed: "opencode/test-free"
+    })
+
+    const result = await tool.execute()
+    expect(result.completed).toBe(false)
+    expect(result.error).toContain("OUT_OF_SCOPE_WORK_PRODUCT")
+    expect(result.error).toContain("pnpm-lock.yaml")
+  })
+
 })

@@ -160,4 +160,15 @@ describe("OpenCode Otonom Harness Plugin", () => {
     }
   })
 
+
+  it("blocks dependency-mutating package-manager commands when lockfiles are outside lane ownership", async () => {
+    const plugin: any = createOtonomPlugin({ taskPath, workspaceRoot: tempDir })
+    await expect(
+      plugin.hooks["tool.execute.before"](
+        { tool: "bash" },
+        { args: { command: "pnpm install" } }
+      )
+    ).rejects.toThrow("Dependency mutation blocked")
+  })
+
 })

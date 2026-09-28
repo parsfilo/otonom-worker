@@ -44,35 +44,44 @@ export class OwnershipTracker {
     return p.replace(/\\/g, "/").replace(/^\.\//, "")
   }
 
-  public recordEdit(filepath: string): { allowed: boolean; violation?: PolicyViolation } {
+  public checkPath(filepath: string): { allowed: boolean; violation?: PolicyViolation } {
     const normalized = this.normalizePath(filepath)
-    this.editedPaths.add(normalized)
 
-    // Check forbidden paths first
     if (this.forbiddenMatcher && this.forbiddenMatcher(normalized)) {
-      const violation: PolicyViolation = {
-        policy: "OWNERSHIP_FORBIDDEN_WRITE",
-        detail: `Attempted edit to forbidden path: ${normalized}`,
-        target: normalized,
-        timestamp: new Date().toISOString()
+      return {
+        allowed: false,
+        violation: {
+          policy: "OWNERSHIP_FORBIDDEN_WRITE",
+          detail: `Attempted edit to forbidden path: ${normalized}`,
+          target: normalized,
+          timestamp: new Date().toISOString()
+        }
       }
-      this.violations.push(violation)
-      return { allowed: false, violation }
     }
 
-    // Check allowed paths
     if (!this.allowedMatcher(normalized)) {
-      const violation: PolicyViolation = {
-        policy: "OUT_OF_SCOPE_WRITE",
-        detail: `Attempted edit outside owned paths: ${normalized}`,
-        target: normalized,
-        timestamp: new Date().toISOString()
+      return {
+        allowed: false,
+        violation: {
+          policy: "OUT_OF_SCOPE_WRITE",
+          detail: `Attempted edit outside owned paths: ${normalized}`,
+          target: normalized,
+          timestamp: new Date().toISOString()
+        }
       }
-      this.violations.push(violation)
-      return { allowed: false, violation }
     }
 
     return { allowed: true }
+  }
+
+  public recordEdit(filepath: string): { allowed: boolean; violation?: PolicyViolation } {
+    const normalized = this.normalizePath(filepath)
+    this.editedPaths.add(normalized)
+    const result = this.checkPath(normalized)
+    if (!result.allowed && result.violation) {
+      this.violations.push(result.violation)
+    }
+    return result
   }
 
   public recordRevert(filepath: string) {

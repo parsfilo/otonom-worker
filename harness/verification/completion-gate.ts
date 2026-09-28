@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import { VerificationResult } from "./runner.js"
-import { PolicyViolation } from "../policies/ownership.js"
+import { OwnershipTracker, PolicyViolation } from "../policies/ownership.js"
 
 export interface CompletionGateInput {
   taskPath: string
@@ -48,6 +48,20 @@ export function evaluateLaneCompletion(input: CompletionGateInput): CompletionGa
     return {
       canComplete: false,
       reason: `Unresolved blockers present: ${input.unresolvedBlockers.join(", ")}`
+    }
+  }
+
+  const authoritativeOwnership = new OwnershipTracker({
+    allowedWritePaths: task.allowed_write_paths || [],
+    forbiddenWritePaths: task.forbidden_write_paths || []
+  })
+  for (const changedPath of input.changedPaths) {
+    const check = authoritativeOwnership.checkPath(changedPath)
+    if (!check.allowed) {
+      return {
+        canComplete: false,
+        reason: `OUT_OF_SCOPE_WORK_PRODUCT: ${check.violation?.detail || changedPath}`
+      }
     }
   }
 

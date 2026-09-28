@@ -20,6 +20,7 @@ export function buildTaskPrompt(task: any): string {
     `- Modify ONLY files listed under Allowed Write Paths. Any other file edit will fail the lane.`,
     `- Fulfill all task objectives directly; a textual explanation without the required repository changes is NOT completion.`,
     `- Before finishing, confirm the required work product exists, run the required verification profile, and call complete_lane.`,
+    `- Do not run dependency-mutating package-manager commands (install/add/remove/update) unless package manifests/lockfiles are explicitly inside Allowed Write Paths.`,
     `- Do not attempt git push, gh PR commands, or network credential access.`
   ].join("\n")
 }
@@ -79,7 +80,7 @@ export async function runLane(
     })
     const changeSummary = gitDetector.detectChanges()
     const requiredWorkMissing = task.requires_changes === true && changeSummary.actualChangedPaths.length === 0
-    const isPassing = execResult.status === "PASS" && !requiredWorkMissing
+    const isPassing = false
 
     const syntheticResult = {
       task_id: laneId,
@@ -97,11 +98,9 @@ export async function runLane(
       },
       policy_violations: [],
       findings_fixed: [],
-      remaining_blockers: isPassing
-        ? []
-        : [execResult.status !== "PASS"
-            ? (execResult.error || execResult.status)
-            : (requiredWorkMissing ? "NO_WORK_PRODUCT" : "RESULT_MISSING")],
+      remaining_blockers: [execResult.status !== "PASS"
+        ? (execResult.error || execResult.status)
+        : (requiredWorkMissing ? "NO_WORK_PRODUCT" : "RESULT_MISSING")],
       cross_lane_request_count: 0,
       loop_metrics: {
         tool_repeats: 0,
