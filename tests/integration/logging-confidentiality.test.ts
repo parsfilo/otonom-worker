@@ -235,7 +235,65 @@ describe("Logging Confidentiality & Execution Supervision", () => {
     expect(publicLogs.join("\n")).not.toContain("free tier can only be used")
   })
 
-  it("Test E: STALLED output remains private and process is terminated safely", async () => {
+  it.skipIf(process.platform === "win32")(
+    "Test E: timeout terminates the full POSIX process group",
+    async () => {
+      const grandchildPidPath = path.join(tempDir, "grandchild.pid")
+      const fakeAgentScript = path.join(tempDir, "fake-agent-process-tree.js")
+      fs.writeFileSync(
+        fakeAgentScript,
+        `
+        const { spawn } = require("node:child_process");
+        const fs = require("node:fs");
+        const child = spawn(
+          process.execPath,
+          ["-e", "setInterval(() => {}, 1000)"],
+          { stdio: "ignore" }
+        );
+        fs.writeFileSync(${JSON.stringify(grandchildPidPath)}, String(child.pid));
+        setInterval(() => {}, 1000);
+        `
+      )
+
+      const runner = new AgentRunner({
+        laneId: "process-tree-timeout",
+        privateDir,
+        command: process.execPath,
+        args: [fakeAgentScript],
+        timeoutMs: 800
+      })
+
+      const result = await runner.run()
+      expect(result.status).toBe("STALLED")
+
+      const grandchildPid = Number(fs.readFileSync(grandchildPidPath, "utf-8"))
+      const deadline = Date.now() + 2_000
+      let alive = true
+      while (Date.now() < deadline) {
+        try {
+          process.kill(grandchildPid, 0)
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        } catch {
+          alive = false
+          break
+        }
+      }
+
+      try {
+        expect(alive).toBe(false)
+      } finally {
+        if (alive) {
+          try {
+            process.kill(grandchildPid, "SIGKILL")
+          } catch {
+            // Already exited.
+          }
+        }
+      }
+    }
+  )
+
+  it("Test E2: STALLED output remains private and process is terminated safely", async () => {
     const fakeAgentScript = path.join(tempDir, "fake-agent-stall.js")
     // Hangs forever while printing sensitive info periodically
     fs.writeFileSync(

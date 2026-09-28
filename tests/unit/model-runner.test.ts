@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import { execFileSync } from "node:child_process"
 import { ModelSelector } from "../../harness/runtime/model-selector.js"
 import { ModelExecutor } from "../../harness/runtime/model-executor.js"
+import { AgentRunner, type AgentRunResult } from "../../harness/runtime/agent-runner.js"
 
 describe("Model Selector & Execution Driver with Fallback", () => {
   let tempDir: string
@@ -139,6 +140,66 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     expect(result.status).toBe("PASS")
     expect(result.attempts[0].status).toBe("STALLED")
     expect(result.attempts[1].status).toBe("PASS")
+  })
+
+  it("Test 3b: fallback attempts use isolated OpenCode HOME/XDG runtime state", async () => {
+    const seenEnvs: Array<Record<string, string> | undefined> = []
+    let calls = 0
+    const runSpy = vi.spyOn(AgentRunner.prototype, "run").mockImplementation(async function (this: AgentRunner) {
+      seenEnvs.push({ ...((this as unknown as { env?: Record<string, string> }).env || {}) })
+      calls++
+      const stalled = calls === 1
+      return {
+        exitCode: stalled ? null : 0,
+        status: stalled ? "STALLED" : "PASS",
+        durationMs: 10,
+        timedOut: stalled,
+        stalled,
+        stdoutPath: path.join(privateDir, `out-${calls}.log`),
+        stderrPath: path.join(privateDir, `err-${calls}.log`),
+        sanitizedSummary: stalled ? "Timed out" : "Passed",
+        errorCategory: stalled ? "TIMEOUT" : undefined
+      } satisfies AgentRunResult
+    })
+
+    try {
+      const executor = new ModelExecutor({
+        selector: new ModelSelector({
+          availableCatalog: [
+            "opencode/mimo-v2.6-flash-free",
+            "opencode/ling-3.0-flash-fin-free"
+          ]
+        }),
+        privateDir,
+        maxAttempts: 2,
+        agentEnv: {
+          HOME: path.join(tempDir, "shared-home"),
+          XDG_CONFIG_HOME: path.join(tempDir, "shared-config"),
+          XDG_DATA_HOME: path.join(tempDir, "shared-data"),
+          XDG_CACHE_HOME: path.join(tempDir, "shared-cache")
+        }
+      })
+
+      const result = await executor.executeLane("lane-isolated-runtime", "builder-core")
+      expect(result.status).toBe("PASS")
+      expect(seenEnvs).toHaveLength(2)
+
+      const first = seenEnvs[0]!
+      const second = seenEnvs[1]!
+      expect(first.HOME).not.toBe(second.HOME)
+      expect(first.HOME).toContain(path.join(privateDir, "opencode-attempts", "attempt-1"))
+      expect(second.HOME).toContain(path.join(privateDir, "opencode-attempts", "attempt-2"))
+      expect(first.XDG_CONFIG_HOME).toBe(path.join(first.HOME, ".config"))
+      expect(first.XDG_DATA_HOME).toBe(path.join(first.HOME, ".local", "share"))
+      expect(first.XDG_CACHE_HOME).toBe(path.join(first.HOME, ".cache"))
+      expect(second.XDG_CONFIG_HOME).toBe(path.join(second.HOME, ".config"))
+      expect(second.XDG_DATA_HOME).toBe(path.join(second.HOME, ".local", "share"))
+      expect(second.XDG_CACHE_HOME).toBe(path.join(second.HOME, ".cache"))
+      expect(fs.existsSync(first.HOME)).toBe(true)
+      expect(fs.existsSync(second.HOME)).toBe(true)
+    } finally {
+      runSpy.mockRestore()
+    }
   })
 
   it("Test 4: unavailable model in catalog is skipped", async () => {

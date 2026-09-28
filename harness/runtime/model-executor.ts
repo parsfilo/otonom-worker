@@ -109,6 +109,23 @@ export class ModelExecutor {
       if (this.runnerFactory) {
         runner = this.runnerFactory(model)
       } else {
+        const attemptRuntimeRoot = path.join(
+          this.privateDir,
+          "opencode-attempts",
+          `attempt-${i + 1}`
+        )
+        const attemptHomeDir = path.join(attemptRuntimeRoot, "home")
+        fs.rmSync(attemptRuntimeRoot, { recursive: true, force: true })
+        fs.mkdirSync(attemptHomeDir, { recursive: true })
+
+        const attemptAgentEnv = {
+          ...this.agentEnv,
+          HOME: attemptHomeDir,
+          XDG_CONFIG_HOME: path.join(attemptHomeDir, ".config"),
+          XDG_DATA_HOME: path.join(attemptHomeDir, ".local", "share"),
+          XDG_CACHE_HOME: path.join(attemptHomeDir, ".cache")
+        }
+
         if (this.opencodeConfigPath && this.opencodeConfigDir && this.workspaceDir) {
           const preflight = new CapabilityRuntimeManager().preflightOpenCodeConfig({
             configPath: this.opencodeConfigPath,
@@ -137,13 +154,13 @@ export class ModelExecutor {
           env:
             this.opencodeConfigPath && this.opencodeConfigDir
               ? {
-                  ...this.agentEnv,
+                  ...attemptAgentEnv,
                   OPENCODE_CONFIG: this.opencodeConfigPath,
                   OPENCODE_CONFIG_DIR: this.opencodeConfigDir,
                   OTONOM_MODEL_USED: model
                 }
               : {
-                  ...this.agentEnv,
+                  ...attemptAgentEnv,
                   OTONOM_MODEL_USED: model
                 }
         })

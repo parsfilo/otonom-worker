@@ -88,7 +88,10 @@ export class AgentRunner {
         cwd: this.cwd,
         env: effectiveEnv as NodeJS.ProcessEnv,
         stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true
+        windowsHide: true,
+        // On POSIX, make OpenCode the leader of a dedicated process group so a
+        // timeout can terminate MCP/LSP descendants together with the parent.
+        detached: process.platform !== "win32"
       })
 
       // Pipe child stdout & stderr EXCLUSIVELY to private log streams
@@ -161,16 +164,22 @@ export class AgentRunner {
   }
 
   private killProcessTree(child: ChildProcess) {
+    if (!child.pid) return
+
     try {
-      if (process.platform === "win32" && child.pid) {
+      if (process.platform === "win32") {
         spawn("taskkill", ["/pid", child.pid.toString(), "/T", "/F"], {
           stdio: "ignore"
         })
-      } else {
-        child.kill("SIGKILL")
+        return
       }
+
+      // The child is spawned as a POSIX process-group leader. A negative PID
+      // targets the whole group, preventing timed-out OpenCode MCP/LSP children
+      // from leaking into the next model attempt.
+      process.kill(-child.pid, "SIGKILL")
     } catch {
-      // process might already have exited
+      // The process group may already have exited between timeout and cleanup.
     }
   }
 
