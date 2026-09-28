@@ -44,6 +44,8 @@ describe("Capability Profile Runtime Wiring & MCP Isolation", () => {
 
     // Builder must have edit permission
     expect(config.permission?.edit).toBe("allow")
+    expect(config.permission?.["*"]).toBeUndefined()
+    expect(config.permission?.bash).toBeUndefined()
 
     // Nested agents must be denied
     expect(config.permission?.agent).toBe("deny")
