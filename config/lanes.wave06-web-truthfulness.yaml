@@ -1,0 +1,93 @@
+tasks:
+  - id: "web-repositories-truthful-surface"
+    title: "Remove fabricated repository records from the web Repositories page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "09af35c8b9d782df3f77ec8d55b16642a25349bd"
+    objectives:
+      - "Update only apps/web/src/app/repositories/page.tsx."
+      - "Remove fabricated repository identity, account, branch, source transport, autonomy level, protected paths, quality gates, webhook health, and timestamps."
+      - "Render a truthful unavailable state explaining that live registered-repository listing and repository policy details are not exposed through the current public web-safe API contract."
+      - "Do not invent a new endpoint, manager-auth flow, credential, sample repository, webhook state, quality-gate status, or action."
+      - "Prefer a simple server component if client state is no longer needed."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/repositories/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated repository or policy/health data remains."
+      - "The page clearly states that live repository data is unavailable through the current public web-safe API."
+      - "No credential, manager-auth workaround, new endpoint, or fake operational status is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-pull-requests-truthful-surface"
+    title: "Remove fabricated pull-request and PR Guard state from the web Pull Requests page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "09af35c8b9d782df3f77ec8d55b16642a25349bd"
+    objectives:
+      - "Update only apps/web/src/app/pull-requests/page.tsx."
+      - "Remove fabricated PR number/title/SHA/check states/review items/readiness and unwired Accept Suggestion / Reject actions."
+      - "Render a truthful unavailable state explaining that live PR/PR-Guard listing and review-item mutation are not exposed through the current public web-safe API contract."
+      - "Do not invent GitHub/PR data, new endpoints, manager credentials, fake checks, fake review items, or action handlers."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/pull-requests/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated PR/check/review/readiness data remains."
+      - "No unwired Accept/Reject action remains."
+      - "The page clearly states the current public web-safe API limitation."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-layout-truthfulness"
+    title: "Make the global web UI truthfulness notice accurate after live-surface wiring"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "09af35c8b9d782df3f77ec8d55b16642a25349bd"
+    objectives:
+      - "Update only apps/web/src/app/layout.tsx."
+      - "Replace the stale global warning that says all pages show illustrative sample data; several pages now consume live /api/v1/status and other pages deliberately show unavailable states."
+      - "Use a concise truthful notice explaining that each surface shows live state only when backed by an exposed web-safe API contract, otherwise it explicitly renders unavailable/not-exposed."
+      - "Remove or neutralize sidebar footer claims that imply a verified runtime/target configuration when the layout itself does not fetch live configuration (for example Runtime Neon Serverless and Target Multi-Account PAT)."
+      - "Do not add new APIs, credentials, client fetches, dependencies, or operational claims."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/layout.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "The global notice no longer falsely claims all pages are sample-data previews."
+      - "The notice accurately distinguishes live API-backed surfaces from explicit unavailable states."
+      - "Unverified runtime/target configuration claims are removed or neutralized."
+      - "No new operational claim, endpoint, secret, or dependency is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
