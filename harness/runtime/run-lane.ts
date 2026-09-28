@@ -182,6 +182,15 @@ export async function runLane(
 
   console.log(`[Run Lane] Execution completed with status: ${execResult.status}`)
   console.log(`[Run Lane] Trusted completion reconciliation: ${trustedResult.status}`)
+  if (trustedResult.policy_violations?.length) {
+    const targets = trustedResult.policy_violations
+      .map((violation: { target?: string }) => violation.target)
+      .filter((target: string | undefined): target is string => Boolean(target))
+      .sort()
+    if (targets.length > 0) {
+      console.log(`[Run Lane] out_of_scope_paths=${targets.join(",")}`)
+    }
+  }
   if (trustedResult.status !== "PASS") {
     console.log(`[Run Lane Note] Trusted result is non-passing (${trustedResult.remaining_blockers.join(", ") || "policy violation"}). Finalizer will fail closed.`)
   }
