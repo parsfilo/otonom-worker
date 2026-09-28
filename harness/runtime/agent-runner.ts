@@ -233,6 +233,11 @@ export class AgentRunner {
       return { status: "FAIL", errorCategory: "MCP_START_ERROR" }
     }
 
+    const freeTierClientGateRegex = /free tier can only be used from within opencode/i
+    if (freeTierClientGateRegex.test(logHeadAndTail)) {
+      return { status: "FAIL", errorCategory: "FREE_TIER_CLIENT_GATE" }
+    }
+
     const unavailableRegex =
       /(?:model.*not found|model.*unavailable|does not exist|model.*not supported|unknown.*model|unknownerror|unexpected.*server.*error|provider.*not.*found|failed to fetch|econnrefused|endpoint\s+(?:is\s+)?unavailable|upstream request failed|service unavailable|temporarily unavailable|model access is disabled|model.*access.*disabled|bad gateway|gateway timeout|internal server error|status(?: code)?\s*(?:500|502|503|504))/i
     if (unavailableRegex.test(logHeadAndTail)) {

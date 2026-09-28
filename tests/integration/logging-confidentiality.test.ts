@@ -218,6 +218,23 @@ describe("Logging Confidentiality & Execution Supervision", () => {
     expect(publicLogs.join("\n")).not.toContain("provider returned 503")
   })
 
+  it("Test D6: free-tier client identity gate is classified without exposing raw stderr", async () => {
+    const script = path.join(tempDir, "free-tier-client-gate.js")
+    fs.writeFileSync(script, `process.stderr.write("OpenCode's free tier can only be used from within OpenCode\n"); process.exit(1)`)
+    const publicLogs: string[] = []
+    const runner = new AgentRunner({
+      laneId: "free-tier-client-gate",
+      privateDir,
+      command: process.execPath,
+      args: [script],
+      onPublicLog: (message) => publicLogs.push(message)
+    })
+    const result = await runner.run()
+    expect(result.status).toBe("FAIL")
+    expect(result.errorCategory).toBe("FREE_TIER_CLIENT_GATE")
+    expect(publicLogs.join("\n")).not.toContain("free tier can only be used")
+  })
+
   it("Test E: STALLED output remains private and process is terminated safely", async () => {
     const fakeAgentScript = path.join(tempDir, "fake-agent-stall.js")
     // Hangs forever while printing sensitive info periodically

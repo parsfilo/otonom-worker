@@ -151,6 +151,8 @@ export async function runLane(
   const prompt = buildTaskPrompt(task)
   const selector = new ModelSelector({ autoDiscover: true })
   const opencodeConfigDir = path.join(controlDir, "opencode")
+  const opencodeHomeDir = path.join(privateDir, "opencode-home")
+  fs.mkdirSync(opencodeHomeDir, { recursive: true })
   const executor = new ModelExecutor({
     selector,
     privateDir,
@@ -162,6 +164,10 @@ export async function runLane(
     requiresChanges: task.requires_changes === true,
     baseSha: task.base_sha,
     agentEnv: {
+      HOME: opencodeHomeDir,
+      XDG_CONFIG_HOME: path.join(opencodeHomeDir, ".config"),
+      XDG_DATA_HOME: path.join(opencodeHomeDir, ".local", "share"),
+      XDG_CACHE_HOME: path.join(opencodeHomeDir, ".cache"),
       TASK_PATH: taskPath,
       RESULT_PATH: resultPath,
       CONTROL_DIR: controlDir,
