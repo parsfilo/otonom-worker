@@ -1,0 +1,93 @@
+tasks:
+  - id: "web-projects-truthful-surface"
+    title: "Remove fabricated Project Brain records from the web Projects page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "e56ad438bf319556174d683a61a0ed5ce3e96298"
+    objectives:
+      - "Update only apps/web/src/app/projects/page.tsx."
+      - "Remove the fabricated project identity, revision, branch, facts/decisions/directives counts, and timestamps."
+      - "Render a truthful empty/unavailable state explaining that live project/Project Brain listing is not exposed by the current public web-safe API contract."
+      - "Do not invent a new API, manager-auth flow, credential, demo project, sample count, action button, or client-side secret."
+      - "Prefer a simple server component if client state is no longer needed."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/projects/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated project row or fake Project Brain counts remain."
+      - "The page states truthfully that live project data is unavailable through the current public web-safe API."
+      - "No manager secret/auth workaround or new endpoint is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-tasks-truthful-surface"
+    title: "Remove fabricated DAG executions and unwired task actions from the web Tasks page"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "e56ad438bf319556174d683a61a0ed5ce3e96298"
+    objectives:
+      - "Update only apps/web/src/app/tasks/page.tsx."
+      - "Remove fabricated DAG IDs, task titles, repositories, progress, path locks, statuses, durations, and fake Inspect/Dispatch controls."
+      - "Render a truthful unavailable state explaining that live task/DAG listing and dispatch are not exposed through the current public web-safe API contract."
+      - "Do not invent a new API, manager-auth flow, credential, fake task, fake path lock, or action endpoint."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/tasks/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "No fabricated task/DAG/path-lock data remains."
+      - "No unwired Filter, Dispatch New DAG, or Inspect DAG controls remain."
+      - "The page clearly states the current public API limitation without implying live data exists."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
+
+  - id: "web-workers-live-status"
+    title: "Replace fabricated worker fleet card with truthful live worker aggregate"
+    role: "ui-builder"
+    source_repository: "oaslananka/otonom"
+    base_sha: "e56ad438bf319556174d683a61a0ed5ce3e96298"
+    objectives:
+      - "Update only apps/web/src/app/workers/page.tsx."
+      - "Use the existing public GET /api/v1/status contract through NEXT_PUBLIC_API_URL to display the live workers.active aggregate and controlPlane state."
+      - "Remove fabricated worker IDs, GitHub accounts, health state, concurrency, run IDs, heartbeat times, and capabilities that the public status API does not provide."
+      - "Fail closed with an explicit unavailable/degraded state when NEXT_PUBLIC_API_URL is missing, the request fails, the response is non-2xx, or workers.active is invalid."
+      - "Do not introduce manager credentials, browser-side secrets, new endpoints, dependencies, or per-worker fake details."
+      - "After run_verification and complete_lane succeed, stop immediately."
+    allowed_write_paths:
+      - "apps/web/src/app/workers/page.tsx"
+    forbidden_write_paths:
+      - "apps/control-plane/**"
+      - "packages/**"
+      - ".github/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    acceptance_criteria:
+      - "The page displays live workers.active when the public status endpoint succeeds."
+      - "No fabricated per-worker operational details remain."
+      - "Missing/unreachable/invalid live status renders a truthful unavailable state."
+      - "No credential or manager-auth workaround is introduced."
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
+    requires_changes: true
+    timeout_minutes: 25
+    attempt_timeout_minutes: 5
+    risk_classification: "LOW"
