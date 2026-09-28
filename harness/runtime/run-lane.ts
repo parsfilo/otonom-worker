@@ -157,7 +157,7 @@ export async function runLane(
     workspaceDir: targetWorkspaceDir,
     opencodeConfigPath: path.join(opencodeConfigDir, "opencode.json"),
     opencodeConfigDir,
-    maxAttempts: 3,
+    maxAttempts: 6,
     requiresChanges: task.requires_changes === true,
     baseSha: task.base_sha,
     agentEnv: {

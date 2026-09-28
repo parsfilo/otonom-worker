@@ -200,6 +200,24 @@ describe("Logging Confidentiality & Execution Supervision", () => {
     expect(publicLogs.join("\n")).not.toContain("Model access is disabled")
   })
 
+  it("Test D5: generic upstream request failure is classified unavailable without exposing stderr", async () => {
+    const script = path.join(tempDir, "generic-upstream-failure.js")
+    fs.writeFileSync(script, `process.stderr.write("Upstream request failed: provider returned 503\n"); process.exit(1)`)
+    const publicLogs: string[] = []
+    const runner = new AgentRunner({
+      laneId: "generic-upstream-failure",
+      privateDir,
+      command: process.execPath,
+      args: [script],
+      onPublicLog: (message) => publicLogs.push(message)
+    })
+
+    const result = await runner.run()
+    expect(result.status).toBe("UNAVAILABLE")
+    expect(result.errorCategory).toBe("MODEL_UNAVAILABLE")
+    expect(publicLogs.join("\n")).not.toContain("provider returned 503")
+  })
+
   it("Test E: STALLED output remains private and process is terminated safely", async () => {
     const fakeAgentScript = path.join(tempDir, "fake-agent-stall.js")
     // Hangs forever while printing sensitive info periodically
