@@ -4,6 +4,7 @@ import { CapabilityRuntimeManager, OPENCODE_COMMAND, opencodeArgs } from "./capa
 import { GitChangeDetector } from "../finalizer/git-detector.js"
 import path from "node:path"
 import fs from "node:fs"
+import { execFileSync } from "node:child_process"
 
 export interface ModelExecutorOptions {
   selector?: ModelSelector
@@ -173,6 +174,26 @@ function fileSizeOrZero(filePath: string): number {
   }
 }
 
+function resetWorkspaceForRetry(workspaceDir: string, baseSha: string) {
+  execFileSync("git", ["reset", "--hard", baseSha], {
+    cwd: workspaceDir,
+    stdio: "ignore"
+  })
+  execFileSync("git", ["clean", "-fdx"], {
+    cwd: workspaceDir,
+    stdio: "ignore"
+  })
+
+  const status = execFileSync("git", ["status", "--porcelain=v1", "-uall"], {
+    cwd: workspaceDir,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"]
+  })
+  if (status.trim() !== "") {
+    throw new Error("RETRY_WORKSPACE_RESET_FAILED")
+  }
+}
+
 export class ModelExecutor {
   private selector: ModelSelector
   private runnerFactory?: (model: string) => { run: () => Promise<AgentRunResult> }
@@ -226,6 +247,20 @@ export class ModelExecutor {
     }
 
     for (let i = 0; i < this.maxAttempts; i++) {
+      if (i > 0 && this.workspaceDir) {
+        try {
+          resetWorkspaceForRetry(this.workspaceDir, this.baseSha || "HEAD")
+          console.log(`[ModelExecutor Retry] lane=${laneId} attempt=${i + 1} workspace=RESET_CLEAN`)
+        } catch {
+          return {
+            success: false,
+            status: "FAIL",
+            attempts,
+            error: "RETRY_WORKSPACE_RESET_FAILED"
+          }
+        }
+      }
+
       const model = this.selector.getFallbackModel(role, attemptedModels)
       if (!model) {
         return {

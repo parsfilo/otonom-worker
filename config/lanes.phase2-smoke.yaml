@@ -19,6 +19,6 @@ tasks:
       - "Verification profile smoke-doc exits with code 0"
     verification_profile: "smoke-doc"
     requires_changes: true
-    timeout_minutes: 15
+    timeout_minutes: 25
     attempt_timeout_minutes: 3
     risk_classification: "LOW"

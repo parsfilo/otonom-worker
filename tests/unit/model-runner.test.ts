@@ -203,7 +203,77 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     }
   })
 
-  it("Test 3c: config preflight runs once across model fallback attempts", async () => {
+  it("Test 3c: retry starts from a clean exact-base workspace after a stalled partial attempt", async () => {
+    const repo = path.join(tempDir, "retry-reset-repo")
+    fs.mkdirSync(repo, { recursive: true })
+    execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test"], { cwd: repo, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repo, stdio: "ignore" })
+    fs.writeFileSync(path.join(repo, "base.txt"), "base\n")
+    execFileSync("git", ["add", "."], { cwd: repo, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "base"], { cwd: repo, stdio: "ignore" })
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf-8" }).trim()
+
+    let attempt = 0
+    const executor = new ModelExecutor({
+      selector: new ModelSelector({
+        availableCatalog: [
+          "opencode/mimo-v2.6-flash-free",
+          "opencode/ling-3.0-flash-fin-free"
+        ]
+      }),
+      workspaceDir: repo,
+      baseSha,
+      requiresChanges: true,
+      maxAttempts: 2,
+      runnerFactory: () => ({
+        run: async () => {
+          attempt++
+          if (attempt === 1) {
+            fs.writeFileSync(path.join(repo, "partial.txt"), "partial\n")
+            return {
+              exitCode: null,
+              status: "STALLED" as const,
+              durationMs: 10,
+              timedOut: true,
+              stalled: true,
+              stdoutPath: path.join(privateDir, "retry-1.out"),
+              stderrPath: path.join(privateDir, "retry-1.err"),
+              sanitizedSummary: "Timed out",
+              errorCategory: "TIMEOUT"
+            }
+          }
+
+          const statusBefore = execFileSync("git", ["status", "--porcelain=v1", "-uall"], {
+            cwd: repo,
+            encoding: "utf-8"
+          })
+          expect(statusBefore).toBe("")
+          expect(fs.existsSync(path.join(repo, "partial.txt"))).toBe(false)
+          expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf-8" }).trim()).toBe(baseSha)
+
+          fs.writeFileSync(path.join(repo, "owned.txt"), "owned\n")
+          return {
+            exitCode: 0,
+            status: "PASS" as const,
+            durationMs: 10,
+            timedOut: false,
+            stalled: false,
+            stdoutPath: path.join(privateDir, "retry-2.out"),
+            stderrPath: path.join(privateDir, "retry-2.err"),
+            sanitizedSummary: "Passed"
+          }
+        }
+      })
+    })
+
+    const result = await executor.executeLane("lane-retry-reset", "builder-core")
+    expect(result.status).toBe("PASS")
+    expect(result.actualModel).toBe("opencode/ling-3.0-flash-fin-free")
+    expect(fs.readFileSync(path.join(repo, "owned.txt"), "utf-8")).toBe("owned\n")
+  })
+
+  it("Test 3d: config preflight runs once across model fallback attempts", async () => {
     const repoDir = path.join(tempDir, "preflight-target")
     fs.mkdirSync(repoDir, { recursive: true })
     execFileSync("git", ["init"], { cwd: repoDir, stdio: "ignore" })
@@ -263,7 +333,7 @@ describe("Model Selector & Execution Driver with Fallback", () => {
     }
   })
 
-  it("Test 3d: emits bounded sanitized per-attempt tool diagnostics", async () => {
+  it("Test 3e: emits bounded sanitized per-attempt tool diagnostics", async () => {
     const telemetryPath = path.join(privateDir, "telemetry.jsonl")
     const stdoutPath = path.join(privateDir, "diag.stdout")
     const stderrPath = path.join(privateDir, "diag.stderr")
