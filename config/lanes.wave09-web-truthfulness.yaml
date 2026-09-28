@@ -6,7 +6,7 @@ base_sha: "8dc4406398bc64fca83b62446e14fa91ea8ea726"
 tasks:
   - id: "web-frontier-truthful-surface"
     title: "Remove fabricated Frontier provider and decision state from web UI"
-    role: "builder-core"
+    role: "ui-builder"
     source_repository: "oaslananka/otonom"
     base_sha: "8dc4406398bc64fca83b62446e14fa91ea8ea726"
     objectives:
@@ -15,6 +15,7 @@ tasks:
       - "Keep the page useful and truthful: the current control-plane exposes Frontier manager inspection endpoints such as /api/v1/frontier/hosts and /api/v1/frontier/jobs, but they require manager authentication and are not wired as a public browser-safe web contract. Do not invent credentials or call manager-only endpoints from the browser."
       - "Render a clear unavailable/not-wired state for live Frontier hosts/jobs/decisions instead of live-looking sample rows."
       - "Do not add backend endpoints, dependencies, mock data, timestamps, provider health claims, or mutation controls."
+      - "After run_verification and complete_lane succeed, stop immediately."
     allowed_write_paths:
       - "apps/web/src/app/frontier/page.tsx"
     forbidden_write_paths:
@@ -27,16 +28,16 @@ tasks:
       - "No hardcoded provider inventory or fabricated recent decision/evidence rows remain."
       - "No unauthenticated browser request is added to manager-only Frontier endpoints."
       - "The UI explicitly distinguishes implemented Frontier capabilities from unavailable live web data."
-      - "pnpm test passes and git diff --check is clean."
-    verification_profile: "lane"
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
     requires_changes: true
     timeout_minutes: 25
-    attempt_timeout_minutes: 8
+    attempt_timeout_minutes: 5
     risk_classification: "LOW"
 
   - id: "web-secrets-current-architecture"
     title: "Make Secrets page match current encrypted credential architecture"
-    role: "builder-core"
+    role: "ui-builder"
     source_repository: "oaslananka/otonom"
     base_sha: "8dc4406398bc64fca83b62446e14fa91ea8ea726"
     objectives:
@@ -46,6 +47,7 @@ tasks:
       - "Describe RedactionEngine only in source-backed scoped terms; do not claim universal 100% coverage or expose raw secret values."
       - "State that the public web surface currently has no safe secret inventory/health endpoint, so per-secret live status is unavailable rather than fabricated."
       - "Do not add backend endpoints, dependencies, secret reveal/copy controls, or credential mutation controls."
+      - "After run_verification and complete_lane succeed, stop immediately."
     allowed_write_paths:
       - "apps/web/src/app/secrets/page.tsx"
     forbidden_write_paths:
@@ -59,16 +61,16 @@ tasks:
       - "No statement remains that the database stores only SecretRef pointers as the current credential architecture."
       - "No raw secret values, reveal controls, or unwired mutation buttons are introduced."
       - "The page clearly states that live per-secret inventory/status is unavailable in the public web contract."
-      - "pnpm test passes and git diff --check is clean."
-    verification_profile: "lane"
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
     requires_changes: true
     timeout_minutes: 25
-    attempt_timeout_minutes: 8
+    attempt_timeout_minutes: 5
     risk_classification: "LOW"
 
   - id: "web-dashboard-security-truthfulness"
     title: "Correct stale and absolute worker security claims on dashboard"
-    role: "builder-core"
+    role: "ui-builder"
     source_repository: "oaslananka/otonom"
     base_sha: "8dc4406398bc64fca83b62446e14fa91ea8ea726"
     objectives:
@@ -78,6 +80,7 @@ tasks:
       - "Keep only source-backed scoped claims: worker workflow uses contents: read and id-token: write with checkout credentials not persisted; git_push/git_force_push MCP tools are globally blocked; patch boundaries are validated before trusted integration; RedactionEngine is wired into worker/control-plane paths."
       - "Remove absolute language such as '100%' coverage or claims that every git push attempt necessarily fails at one specific credential layer."
       - "Do not change live /api/v1/status metrics behavior or add backend/API work."
+      - "After run_verification and complete_lane succeed, stop immediately."
     allowed_write_paths:
       - "apps/web/src/app/page.tsx"
     forbidden_write_paths:
@@ -90,9 +93,9 @@ tasks:
       - "The dashboard no longer says worker leases expire in 15 minutes."
       - "Security posture wording matches current implementation without unsupported absolutes or single-gateway attribution."
       - "Existing live status metrics and degraded-state behavior are unchanged."
-      - "pnpm test passes and git diff --check is clean."
-    verification_profile: "lane"
+      - "Worker target-ci diff hygiene passes; dependency-backed checks are deferred to OTONOM PR CI."
+    verification_profile: "target-ci"
     requires_changes: true
     timeout_minutes: 25
-    attempt_timeout_minutes: 8
+    attempt_timeout_minutes: 5
     risk_classification: "LOW"
